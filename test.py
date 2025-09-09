@@ -5,13 +5,6 @@ import pystray
 from PIL import Image, ImageDraw, ImageFont
 import sys
 
-# PyObjC imports for macOS dialog to set target duration
-try:
-	from Cocoa import NSAlert, NSButton, NSView, NSPopUpButton, NSMakeRect, NSApplication, NSApp
-	PYOBJ_AVAILABLE = True
-except Exception:
-	PYOBJ_AVAILABLE = False
-
 class PomodoroTimer:
 	def __init__(self):
 		self.start_time = None
@@ -25,6 +18,9 @@ class PomodoroTimer:
 		self.target_duration = timedelta(minutes=25)
 		self.recent_targets_minutes = [25]
 		self.max_recent_targets = 5
+
+		# In-menu input buffer for Set Target (string of digits or empty)
+		self._input_buffer = ""
 		
 	def create_icon(self, text="0"):
 		# Create an icon with transparent background and centered text
@@ -105,7 +101,7 @@ class PomodoroTimer:
 			self.is_running = False
 			self.is_paused = True
 			self.start_time = None
-			# Show paused minutes in braces
+			# Show paused minutes using current delimiter preference
 			elapsed = self.get_elapsed_time()
 			minute_text = self.format_minutes_only(elapsed)
 			self.icon.icon = self.create_icon(f":{minute_text}:")
@@ -138,7 +134,7 @@ class PomodoroTimer:
 		items = []
 		for minutes in self.recent_targets_minutes[: self.max_recent_targets]:
 			label = f"{minutes} Minutes"
-			items.append(pystray.MenuItem(label, lambda _, m=minutes: self._select_recent_target(m)))
+			items.append(pystray.MenuItem(label, lambda m=minutes: self._select_recent_target(m)))
 		return items
 		
 	def _select_recent_target(self, minutes):
@@ -167,66 +163,68 @@ class PomodoroTimer:
 			additional = 1 if i < remainder else 0
 			parts.append(timedelta(seconds=part + additional))
 		return parts
+
+	# In-menu digit input helpers
+	def _input_preview(self):
+		return self._input_buffer if self._input_buffer != "" else "_"
 		
-	def _show_set_target_dialog(self):
-		"""Show a macOS dialog to select two digits (tens and ones) for minutes."""
-		if not PYOBJ_AVAILABLE:
-			print("PyObjC not available; cannot open selector. Falling back to 25 minutes.")
-			self.set_target_minutes(25)
+	def _append_digit(self, d):
+		d = str(d)
+		if d.isdigit() and len(self._input_buffer) < 3:
+			self._input_buffer += d
+		self._rebuild_menu()
+		
+	def _backspace_digit(self):
+		self._input_buffer = self._input_buffer[:-1]
+		self._rebuild_menu()
+		
+	def _clear_input(self):
+		self._input_buffer = ""
+		self._rebuild_menu()
+		
+	def _apply_input(self):
+		if self._input_buffer == "":
 			return
-
-		# Ensure NSApp is initialized
 		try:
-			app = NSApp()
-		except Exception:
-			app = None
-
-		alert = NSAlert.alloc().init()
-		alert.setMessageText_("Set Target Duration")
-		alert.setInformativeText_("Select minutes (two digits)")
-		alert.addButtonWithTitle_("Select")
-		alert.addButtonWithTitle_("Cancel")
-
-		# Create accessory view ~ 5rem x 5rem (~80px x ~80px)
-		container_w = 160
-		container_h = 100
-		container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, container_w, container_h))
-
-		# Two popup buttons for digits 0-9
-		popup_width = 60
-		popup_height = 26
-		gap = 20
-		top = container_h - popup_height - 20
-		left1 = (container_w - (popup_width*2 + gap)) // 2
-		left2 = left1 + popup_width + gap
-
-		popup_tens = NSPopUpButton.alloc().initWithFrame_(NSMakeRect(left1, top, popup_width, popup_height))
-		popup_ones = NSPopUpButton.alloc().initWithFrame_(NSMakeRect(left2, top, popup_width, popup_height))
-		for n in range(10):
-			popup_tens.addItemWithTitle_(str(n))
-			popup_ones.addItemWithTitle_(str(n))
-
-		# Preselect current target minutes (clamped to two digits)
-		current = int(self.target_duration.total_seconds() // 60)
-		current = max(0, min(99, current))
-		tens = current // 10
-		ones = current % 10
-		popup_tens.selectItemAtIndex_(tens)
-		popup_ones.selectItemAtIndex_(ones)
-
-		container.addSubview_(popup_tens)
-		container.addSubview_(popup_ones)
-
-		alert.setAccessoryView_(container)
-
-		response = alert.runModal()
-		# NSAlertFirstButtonReturn is typically 1000 for the first button; avoid using constants directly
-		if int(response) == 1000:
-			selected_minutes = (popup_tens.indexOfSelectedItem() * 10) + popup_ones.indexOfSelectedItem()
-			self.set_target_minutes(selected_minutes)
-		else:
-			print("Set Target canceled")
-
+			value = int(self._input_buffer)
+			value = max(0, value)
+			self.set_target_minutes(value)
+			print(f"Target set to {value} minutes")
+		finally:
+			self._input_buffer = ""
+			self._rebuild_menu()
+		
+	def _cancel_input(self):
+		self._input_buffer = ""
+		self._rebuild_menu()
+		
+	def _set_target_menu(self):
+		current_preview = int(self.target_duration.total_seconds() // 60)
+		digits = [
+			pystray.MenuItem("0", lambda: self._append_digit(0)),
+			pystray.MenuItem("1", lambda: self._append_digit(1)),
+			pystray.MenuItem("2", lambda: self._append_digit(2)),
+			pystray.MenuItem("3", lambda: self._append_digit(3)),
+			pystray.MenuItem("4", lambda: self._append_digit(4)),
+			pystray.MenuItem("5", lambda: self._append_digit(5)),
+			pystray.MenuItem("6", lambda: self._append_digit(6)),
+			pystray.MenuItem("7", lambda: self._append_digit(7)),
+			pystray.MenuItem("8", lambda: self._append_digit(8)),
+			pystray.MenuItem("9", lambda: self._append_digit(9)),
+		]
+		return pystray.Menu(
+			pystray.MenuItem(f"Current: {current_preview} Minutes", None, enabled=False),
+			pystray.MenuItem(f"Type: {self._input_preview()}", None, enabled=False),
+			pystray.Menu.SEPARATOR,
+			*digits,
+			pystray.Menu.SEPARATOR,
+			pystray.MenuItem("Backspace", self._backspace_digit),
+			pystray.MenuItem("Clear", self._clear_input),
+			pystray.Menu.SEPARATOR,
+			pystray.MenuItem("Apply", self._apply_input),
+			pystray.MenuItem("Cancel", self._cancel_input),
+		)
+		
 	def create_menu(self):
 		# Timer controls
 		start_or_resume_label = "Start Timer" if not (self.is_paused or self.is_running) else ("Resume Timer" if self.is_paused and not self.is_running else "Start Timer")
@@ -235,7 +233,7 @@ class PomodoroTimer:
 		# Target Duration submenu
 		recent_items = self._recent_targets_menu_items()
 		target_menu = pystray.Menu(
-			pystray.MenuItem("Set Target", lambda: self._show_set_target_dialog()),
+			pystray.MenuItem("Set Target", self._set_target_menu()),
 			pystray.MenuItem("Recent Targets:", None, enabled=False),
 			*recent_items
 		)
