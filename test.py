@@ -62,6 +62,9 @@ class PomodoroTimer:
 
 		# Determine per-band color and opacity
 		bands = []  # list of (r,g,b,a_float 0..1)
+		
+		# Middle grey color for initial background
+		grey_color = (128, 128, 128, 255)  # middle grey
 
 		steps = int(elapsed_s // part_s)
 		step_progress_s = elapsed_s - steps * part_s
@@ -71,41 +74,33 @@ class PomodoroTimer:
 			for i in range(6):
 				band_start_s = i * part_s
 				if elapsed_s < band_start_s:
-					opacity = 0.0
-					color = base_colors[i]
+					# Show grey background
+					opacity = 1.0
+					color = grey_color
 				elif elapsed_s < band_start_s + 1.0:
-					opacity = min(1.0, max(0.0, (elapsed_s - band_start_s) / 1.0))
-					color = base_colors[i]
+					# Fade from grey to color over 1s
+					fade_progress = (elapsed_s - band_start_s) / 1.0
+					opacity = 1.0
+					# Interpolate between grey and target color
+					r = int(grey_color[0] * (1 - fade_progress) + base_colors[i][0] * fade_progress)
+					g = int(grey_color[1] * (1 - fade_progress) + base_colors[i][1] * fade_progress)
+					b = int(grey_color[2] * (1 - fade_progress) + base_colors[i][2] * fade_progress)
+					color = (r, g, b, 255)
 				else:
 					opacity = 1.0
 					color = base_colors[i]
 				bands.append((color[0], color[1], color[2], opacity))
 		else:
-			# After target: cyclic color transitions per band
-			post_steps = steps - 6
-			current_band = ((steps - 7) % 6) if steps >= 7 else None
+			# After target: all bands shift to new colors simultaneously
+			# Color changes occur every 1/6th of target time (every part_s)
+			# Calculate how many color shifts have occurred since reaching target
+			post_target_steps = steps - 6
 			for i in range(6):
-				# How many completed changes this band has undergone
-				changes_completed = 0
-				if steps >= 7:
-					changes_completed = max(0, (post_steps - i) // 6 + 1) if (steps >= (7 + i)) else 0
-				old_index = i
-				new_index = (i + changes_completed) % 6
+				# Each band shifts to the next color in the sequence
+				# Every step (1/6th of target time), all bands advance by 1 color
+				new_index = (i + post_target_steps + 1) % 6
 				color = base_colors[new_index]
 				opacity = 1.0
-				# If this is the band currently transitioning in this step, animate 2s window
-				if current_band is not None and i == current_band:
-					if step_progress_s < 1.0:
-						# Fade out old color 1s
-						color = base_colors[(old_index + (changes_completed - 1) % 6) % 6] if changes_completed > 0 else base_colors[old_index]
-						opacity = max(0.0, 1.0 - step_progress_s)
-					elif step_progress_s < 2.0:
-						# Fade in new color 1s
-						color = base_colors[new_index]
-						opacity = max(0.0, min(1.0, step_progress_s - 1.0))
-					else:
-						color = base_colors[new_index]
-						opacity = 1.0
 				bands.append((color[0], color[1], color[2], opacity))
 
 		# If timer not running, halve the opacity of all bands
@@ -136,9 +131,9 @@ class PomodoroTimer:
 		image = Image.composite(bands_image, image, circle_mask)
 		draw = ImageDraw.Draw(image)
 
-		# Add timer text (white, monospace)
+		# Add timer text (white, monospace and bold)
 		try:
-			font = self._get_font(38, bold=False, monospace=True)
+			font = self._get_font(38, bold=True, monospace=True)
 			bbox = draw.textbbox((0, 0), text, font=font, anchor='lt', stroke_width=0)
 			text_w = (bbox[2] - bbox[0]) + 1
 			text_h = (bbox[3] - bbox[1]) + 11
@@ -205,7 +200,7 @@ class PomodoroTimer:
 			# Show paused minutes using current delimiter preference
 			elapsed = self.get_elapsed_time()
 			minute_text = self.format_minutes_only(elapsed)
-			self.icon.icon = self.create_icon(f":{minute_text}:")
+			self.icon.icon = self.create_icon(f"{minute_text}")
 			print("Timer paused!")
 			self._rebuild_menu()
 		
@@ -363,8 +358,19 @@ class PomodoroTimer:
 
 	def _get_font(self, size, bold=False, monospace=False):
 		"""Try to load a macOS system font at given size; fallback to default.
-		If bold requested, try bold faces first. If monospace, try Menlo/Monaco.
+		Priority: monospace+bold > monospace > bold > default
 		"""
+		if monospace and bold:
+			# Try monospace bold fonts first
+			for path in [
+				"/System/Library/Fonts/Menlo.ttc",  # Menlo Bold
+				"/System/Library/Fonts/Monaco.ttf",  # Monaco Bold
+				"/System/Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-Bold.ttf",
+			]:
+				try:
+					return ImageFont.truetype(path, size)
+				except Exception:
+					continue
 		if monospace:
 			# Prefer Menlo on macOS, fallback to Monaco, then SF Mono if available
 			for path in [
