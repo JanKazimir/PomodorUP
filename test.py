@@ -93,12 +93,15 @@ class PomodoroTimer:
 		else:
 			# After target: all bands shift to new colors simultaneously
 			# Color changes occur every 1/6th of target time (every part_s)
+			# Use ping-pong order: 0,1,2,3,4,5,4,3,2,1,0,1,2,...
+			def pingpong_index(k, n=6):
+				period = 2 * (n - 1)
+				m = k % period
+				return m if m < n else period - m
 			# Calculate how many color shifts have occurred since reaching target
 			post_target_steps = steps - 6
 			for i in range(6):
-				# Each band shifts to the next color in the sequence
-				# Every step (1/6th of target time), all bands advance by 1 color
-				new_index = (i + post_target_steps + 1) % 6
+				new_index = pingpong_index(i + post_target_steps + 1, 6)
 				color = base_colors[new_index]
 				opacity = 1.0
 				bands.append((color[0], color[1], color[2], opacity))
