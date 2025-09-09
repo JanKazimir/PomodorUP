@@ -2,7 +2,7 @@ import time
 import threading
 from datetime import datetime, timedelta
 import pystray
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import sys
 
 class PomodoroTimer:
@@ -12,23 +12,31 @@ class PomodoroTimer:
         self.timer_thread = None
         self.icon = None
         
-    def create_icon(self, text="00:00"):
-        # Create a simple icon with the timer text
+    def create_icon(self, text="0"):
+        # Create an icon with transparent background and centered text
         width = 64
         height = 64
-        image = Image.new('RGB', (width, height), color='white')
+        # Transparent canvas (RGBA), no white background
+        image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
-        
+
         # Draw a simple circle for the icon
-        draw.ellipse([8, 8, 56, 56], fill='red', outline='darkred')
-        
-        # Add timer text
+        draw.ellipse([2, 2, 62, 62], fill='red', outline='darkred')
+
+        # Add timer text (white, 32px)
         try:
-            draw.text((width//2, height//2), text, fill='white', anchor='mm')
-        except:
-            # Fallback if text drawing fails
+            font = self._get_font(36)
+            # Center text using textbbox to compute exact size
+            bbox = draw.textbbox((0, 0), text, font=font, anchor='lt')
+            text_w = (bbox[2] - bbox[0]) + 2
+            text_h = (bbox[3] - bbox[1])+ 3
+            center_x = width // 2
+            center_y = height // 2
+            draw.text((center_x - text_w // 2, center_y - text_h // 2), text, fill=(255, 255, 255, 255), font=font)
+        except Exception:
+            # Fallback if font loading or drawing fails
             pass
-            
+
         return image
     
     def get_elapsed_time(self):
@@ -42,13 +50,19 @@ class PomodoroTimer:
         minutes = total_seconds // 60
         seconds = total_seconds % 60
         return f"{minutes:02d}:{seconds:02d}"
+
+    def format_minutes_only(self, elapsed):
+        total_seconds = int(elapsed.total_seconds())
+        minutes = total_seconds // 60
+        return f"{minutes}"
     
     def update_icon(self):
         while self.is_running:
             if self.start_time:
                 elapsed = self.get_elapsed_time()
-                time_text = self.format_time(elapsed)
-                new_icon = self.create_icon(time_text)
+                # Display minutes only
+                minute_text = self.format_minutes_only(elapsed)
+                new_icon = self.create_icon(minute_text)
                 self.icon.icon = new_icon
             time.sleep(1)
     
@@ -64,11 +78,13 @@ class PomodoroTimer:
         if self.is_running:
             self.is_running = False
             self.start_time = None
-            self.icon.icon = self.create_icon("00:00")
+            self.icon.icon = self.create_icon("::")
             print("Timer stopped!")
     
     def reset_timer(self):
         self.stop_timer()
+        self.icon.icon = self.create_icon("0")
+
         print("Timer reset!")
     
     def quit_app(self):
@@ -87,14 +103,25 @@ class PomodoroTimer:
         return menu
     
     def run(self):
-        # Create initial icon
-        initial_icon = self.create_icon("00:00")
+        # Create initial icon TK change this back to later
+        initial_icon = self.create_icon("66")
         
         # Create the system tray icon
         self.icon = pystray.Icon("PomodorUP", initial_icon, "PomodorUP Timer", self.create_menu())
         
         # Run the app
         self.icon.run()
+
+    def _get_font(self, size):
+        """Try to load a macOS system font at given size; fallback to default."""
+        try:
+            # San Francisco fonts are not directly accessible; use Helvetica as a close default
+            return ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", size)
+        except Exception:
+            try:
+                return ImageFont.truetype("Helvetica", size)
+            except Exception:
+                return ImageFont.load_default()
 
 if __name__ == "__main__":
     timer = PomodoroTimer()
