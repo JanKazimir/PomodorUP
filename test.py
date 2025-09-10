@@ -15,9 +15,12 @@ class PomodoroTimer:
 		self.icon = None
 
 		# Target duration state
-		self.target_duration = timedelta(minutes=25)
-		self.recent_targets_minutes = [25]
+		self.target_duration = timedelta(minutes=30)
+		self.recent_targets_minutes = [30]
 		self.max_recent_targets = 5
+		
+		# Predefined durations in minutes
+		self.predefined_durations = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 75, 90, 120, 150, 180, 210, 240]
 
 		# In-menu input buffer for Set Target (string of digits or empty)
 		self._input_buffer = ""
@@ -245,7 +248,21 @@ class PomodoroTimer:
 		items = []
 		for minutes in self.recent_targets_minutes[: self.max_recent_targets]:
 			label = f"{minutes} Minutes"
-			items.append(pystray.MenuItem(label, lambda m=minutes: self._select_recent_target(m)))
+			# Create a proper closure to capture the minutes value
+			def make_handler(m):
+				return lambda: self._select_recent_target(m)
+			items.append(pystray.MenuItem(label, make_handler(minutes)))
+		return items
+		
+	def _predefined_durations_menu_items(self):
+		# Build a list of MenuItems for predefined durations
+		items = []
+		for minutes in self.predefined_durations:
+			label = f"{minutes} Minutes"
+			# Create a proper closure to capture the minutes value
+			def make_handler(m):
+				return lambda: self._select_recent_target(m)
+			items.append(pystray.MenuItem(label, make_handler(minutes)))
 		return items
 		
 	def _select_recent_target(self, minutes):
@@ -354,10 +371,14 @@ class PomodoroTimer:
 
 		# Target Duration submenu
 		recent_items = self._recent_targets_menu_items()
+		predefined_items = self._predefined_durations_menu_items()
 		target_menu = pystray.Menu(
 			pystray.MenuItem("Set Target", self._set_target_menu()),
 			pystray.MenuItem("Recent Targets:", None, enabled=False),
-			*recent_items
+			*recent_items,
+			pystray.Menu.SEPARATOR,
+			pystray.MenuItem("Predefined Durations:", None, enabled=False),
+			*predefined_items
 		)
 
 		menu = pystray.Menu(
