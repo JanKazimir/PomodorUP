@@ -6,6 +6,8 @@ from PIL import Image, ImageDraw, ImageFont
 import sys
 import csv
 from Cocoa import NSSavePanel
+import os
+import json
 
 class PomodoroTimer:
 	def __init__(self):
@@ -32,6 +34,8 @@ class PomodoroTimer:
 
 		# In-menu input buffer for Set Target (string of digits or empty)
 		self._input_buffer = ""
+		# Load persisted state (sessions, recent targets, target duration)
+		self._load_state()
 		
 	def create_icon(self, text="0", text_color=(255, 255, 255, 255)):
 		# Create an icon with transparent background and centered text
@@ -253,6 +257,8 @@ class PomodoroTimer:
 		self.icon.icon = self.create_icon(str(target_minutes), red_color)
 
 		print("Timer reset!")
+		# Persist state after reset
+		self._save_state()
 		self._rebuild_menu()
 		
 	def quit_app(self):
@@ -260,6 +266,8 @@ class PomodoroTimer:
 		elapsed_now = self.get_elapsed_time()
 		if self._current_session_start is not None and elapsed_now.total_seconds() > 0:
 			self._append_session_record(end_dt=datetime.now(), elapsed_td=elapsed_now)
+		# Persist before exit
+		self._save_state()
 		self.is_running = False
 		self.icon.stop()
 		sys.exit()
@@ -278,6 +286,8 @@ class PomodoroTimer:
 		self._current_session_start = None
 		self._current_session_target_minutes = None
 		self.paused_elapsed = timedelta(0)
+		# Persist after recording a session
+		self._save_state()
 
 	def _format_timedelta_hms(self, td):
 		total_seconds = int(td.total_seconds())
@@ -285,6 +295,61 @@ class PomodoroTimer:
 		minutes = (total_seconds % 3600) // 60
 		seconds = total_seconds % 60
 		return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+	def _get_data_dir(self):
+		base = os.path.expanduser("~/Library/Application Support/PomodorUP")
+		return base
+
+	def _get_data_path(self):
+		return os.path.join(self._get_data_dir(), "pomodorup.json")
+
+	def _load_state(self):
+		try:
+			data_path = self._get_data_path()
+			if not os.path.exists(data_path):
+				return
+			with open(data_path, "r", encoding="utf-8") as f:
+				data = json.load(f)
+			# Restore sessions
+			sessions = data.get("sessions", [])
+			if isinstance(sessions, list):
+				self.sessions = sessions
+			# Restore recent targets
+			recent = data.get("recent_targets_minutes")
+			if isinstance(recent, list) and all(isinstance(x, int) for x in recent):
+				self.recent_targets_minutes = [max(1, min(99, int(x))) for x in recent][: self.max_recent_targets]
+			# Restore target duration
+			target_minutes = data.get("target_minutes")
+			if isinstance(target_minutes, int):
+				target_minutes = max(1, min(99, target_minutes))
+				self.target_duration = timedelta(minutes=target_minutes)
+			# Session counter resumes from max existing id
+			if self.sessions:
+				try:
+					self._session_counter = max(int(s.get("id", 0)) for s in self.sessions)
+				except Exception:
+					self._session_counter = len(self.sessions)
+		except Exception:
+			# On any error, start fresh without crashing
+			pass
+
+	def _save_state(self):
+		try:
+			data_dir = self._get_data_dir()
+			os.makedirs(data_dir, exist_ok=True)
+			data_path = self._get_data_path()
+			tmp_path = data_path + ".tmp"
+			payload = {
+				"sessions": self.sessions,
+				"recent_targets_minutes": self.recent_targets_minutes,
+				"target_minutes": int(self.target_duration.total_seconds() // 60),
+			}
+			with open(tmp_path, "w", encoding="utf-8") as f:
+				json.dump(payload, f, ensure_ascii=False, indent=2)
+			os.replace(tmp_path, data_path)
+		except Exception:
+			# Best-effort persistence
+			pass
 
 	def export_statistics(self):
 		# Open macOS save dialog and export collected sessions to CSV
@@ -312,6 +377,7 @@ class PomodoroTimer:
 					print(f"Statistics exported to {path}")
 				except Exception as e:
 					print(f"Failed to export statistics: {e}")
+		# Persist after export is optional; we keep state unchanged
 		
 	def _rebuild_menu(self):
 		if self.icon is not None:
@@ -358,6 +424,8 @@ class PomodoroTimer:
 		if not self.is_running:
 			red_color = (242, 38, 89, 255)  # Red from color palette
 			self.icon.icon = self.create_icon(str(minutes), red_color)
+		# Persist new target and recent list
+		self._save_state()
 		
 		self._rebuild_menu()
 
