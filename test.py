@@ -91,8 +91,16 @@ class PomodoroTimer:
 				band_start_s = i * part_s
 				if elapsed_s < band_start_s:
 					# Show grey background
-					opacity = 1.0
-					color = grey_color
+					# opacity = 1.0
+					# color = grey_color
+					# Show transparent background when timer is running but not yet filled
+					if self.is_running:
+						opacity = 0.0
+						color = grey_color
+					else:
+						# Show grey background when timer is not running
+						opacity = 1.0
+						color = grey_color
 				elif elapsed_s < band_start_s + 1.0:
 					# Fade from grey to color over 1s
 					fade_progress = (elapsed_s - band_start_s) / 1.0
@@ -536,6 +544,11 @@ class PomodoroTimer:
 		start_or_resume_label = "Start Timer" if not (self.is_paused or self.is_running) else ("Resume Timer" if self.is_paused and not self.is_running else "Start Timer")
 		pause_label = "Pause Timer"
 
+		# Get current timer information
+		elapsed = self.get_elapsed_time()
+		elapsed_formatted = self.format_time(elapsed)
+		target_minutes = int(self.target_duration.total_seconds() // 60)
+
 		# Target Duration submenu
 		recent_items = self._recent_targets_menu_items()
 		predefined_items = self._predefined_durations_menu_items()
@@ -562,6 +575,9 @@ class PomodoroTimer:
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Target Duration", target_menu),
 			pystray.MenuItem("Statistics", stats_menu),
+			pystray.Menu.SEPARATOR,
+			pystray.MenuItem(f"Target: {target_minutes} min", None, enabled=False),
+			pystray.MenuItem(f"Elapsed: {elapsed_formatted}", None, enabled=False),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Quit", self.quit_app)
 		)
