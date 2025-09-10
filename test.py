@@ -8,6 +8,7 @@ import csv
 from Cocoa import NSSavePanel
 import os
 import json
+import subprocess
 
 class PomodoroTimer:
 	def __init__(self):
@@ -378,6 +379,23 @@ class PomodoroTimer:
 				except Exception as e:
 					print(f"Failed to export statistics: {e}")
 		# Persist after export is optional; we keep state unchanged
+
+	def clear_statistics(self):
+		# Clear in-memory sessions and persisted sessions
+		self.sessions = []
+		self._session_counter = 0
+		self._save_state()
+		print("Statistics cleared!")
+		self._rebuild_menu()
+
+	def show_data_file(self):
+		# Open the data directory in Finder
+		try:
+			data_dir = self._get_data_dir()
+			os.makedirs(data_dir, exist_ok=True)
+			subprocess.Popen(["open", data_dir])
+		except Exception as e:
+			print(f"Failed to open data folder: {e}")
 		
 	def _rebuild_menu(self):
 		if self.icon is not None:
@@ -530,13 +548,20 @@ class PomodoroTimer:
 			*predefined_items
 		)
 
+		# Statistics submenu
+		stats_menu = pystray.Menu(
+			pystray.MenuItem("Export Statistics", self.export_statistics),
+			pystray.MenuItem("Clear Statistics", self.clear_statistics),
+			pystray.MenuItem("Show Data File", self.show_data_file),
+		)
+
 		menu = pystray.Menu(
 			pystray.MenuItem(start_or_resume_label, self.start_timer),
 			pystray.MenuItem(pause_label, self.pause_timer),
 			pystray.MenuItem("Reset Timer", self.reset_timer),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Target Duration", target_menu),
-			pystray.MenuItem("Export Statistics", self.export_statistics),
+			pystray.MenuItem("Statistics", stats_menu),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Quit", self.quit_app)
 		)
