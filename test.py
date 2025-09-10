@@ -25,7 +25,7 @@ class PomodoroTimer:
 		# In-menu input buffer for Set Target (string of digits or empty)
 		self._input_buffer = ""
 		
-	def create_icon(self, text="0"):
+	def create_icon(self, text="0", text_color=(255, 255, 255, 255)):
 		# Create an icon with transparent background and centered text
 		width = 64
 		height = 64
@@ -149,7 +149,7 @@ class PomodoroTimer:
 		image = Image.composite(bands_image, image, circle_mask)
 		draw = ImageDraw.Draw(image)
 
-		# Add timer text (white, monospace and bold)
+		# Add timer text (color specified by parameter, monospace and bold)
 		try:
 			font = self._get_font(38, bold=True, monospace=True)
 			bbox = draw.textbbox((0, 0), text, font=font, anchor='lt', stroke_width=0)
@@ -160,7 +160,7 @@ class PomodoroTimer:
 			draw.text(
 				(center_x - text_w // 2, center_y - text_h // 2),
 				text,
-				fill=(255, 255, 255, 255),
+				fill=text_color,
 				font=font,
 				stroke_width=0,
 				stroke_fill=(0, 0, 0, 180),
@@ -228,7 +228,11 @@ class PomodoroTimer:
 		self.is_paused = False
 		self.start_time = None
 		self.paused_elapsed = timedelta(0)
-		self.icon.icon = self.create_icon("0")
+		
+		# Show target duration in red when reset
+		target_minutes = int(self.target_duration.total_seconds() // 60)
+		red_color = (242, 38, 89, 255)  # Red from color palette
+		self.icon.icon = self.create_icon(str(target_minutes), red_color)
 
 		print("Timer reset!")
 		self._rebuild_menu()
@@ -278,6 +282,12 @@ class PomodoroTimer:
 			self.recent_targets_minutes.remove(minutes)
 		self.recent_targets_minutes.insert(0, minutes)
 		self.recent_targets_minutes = self.recent_targets_minutes[: self.max_recent_targets]
+		
+		# Update icon to show target duration in red if timer is not running
+		if not self.is_running:
+			red_color = (242, 38, 89, 255)  # Red from color palette
+			self.icon.icon = self.create_icon(str(minutes), red_color)
+		
 		self._rebuild_menu()
 
 	def divide_target_into_six(self):
@@ -393,9 +403,10 @@ class PomodoroTimer:
 		return menu
 		
 	def run(self):
-		# Create initial icon
+		# Create initial icon showing target duration in red
 		initial_minutes = int(self.target_duration.total_seconds() // 60)
-		initial_icon = self.create_icon(str(initial_minutes))
+		red_color = (242, 38, 89, 255)  # Red from color palette
+		initial_icon = self.create_icon(str(initial_minutes), red_color)
 		
 		# Create the system tray icon
 		self.icon = pystray.Icon("PomodorUP", initial_icon, "PomodorUP Timer", self.create_menu())
