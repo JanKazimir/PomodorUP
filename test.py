@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 import pystray
 from PIL import Image, ImageDraw, ImageFont
 import sys
+import csv
+from Cocoa import NSSavePanel
 
 class PomodoroTimer:
 	def __init__(self):
@@ -13,6 +15,12 @@ class PomodoroTimer:
 		self.paused_elapsed = timedelta(0)
 		self.timer_thread = None
 		self.icon = None
+
+		# Statistics/session tracking
+		self.sessions = []  # list of dicts with keys: id, date, start, end, target_minutes, elapsed
+		self._session_counter = 0
+		self._current_session_start = None
+		self._current_session_target_minutes = None
 
 		# Target duration state
 		self.target_duration = timedelta(minutes=30)
@@ -198,6 +206,11 @@ class PomodoroTimer:
 		
 	def start_timer(self):
 		if not self.is_running:
+			# If this is a fresh start (not resume), begin a new session for stats
+			if not self.is_paused and self.paused_elapsed.total_seconds() == 0 and self._current_session_start is None:
+				self._session_counter += 1
+				self._current_session_start = datetime.now()
+				self._current_session_target_minutes = int(self.target_duration.total_seconds() // 60)
 			# Resume from pause: keep accumulated paused_elapsed
 			self.start_time = datetime.now()
 			self.is_running = True
@@ -223,6 +236,11 @@ class PomodoroTimer:
 			self._rebuild_menu()
 		
 	def reset_timer(self):
+		# Finalize current session for statistics before resetting
+		elapsed_before_reset = self.get_elapsed_time()
+		if self._current_session_start is not None and elapsed_before_reset.total_seconds() > 0:
+			self._append_session_record(end_dt=datetime.now(), elapsed_td=elapsed_before_reset)
+
 		# Reset all timing state
 		self.is_running = False
 		self.is_paused = False
@@ -238,9 +256,62 @@ class PomodoroTimer:
 		self._rebuild_menu()
 		
 	def quit_app(self):
+		# Finalize current session for statistics on quit
+		elapsed_now = self.get_elapsed_time()
+		if self._current_session_start is not None and elapsed_now.total_seconds() > 0:
+			self._append_session_record(end_dt=datetime.now(), elapsed_td=elapsed_now)
 		self.is_running = False
 		self.icon.stop()
 		sys.exit()
+
+	def _append_session_record(self, end_dt, elapsed_td):
+		# Build and store a session record, then clear current session state
+		record = {
+			"id": self._session_counter,
+			"date": self._current_session_start.date().isoformat(),
+			"start": self._current_session_start.strftime("%H:%M:%S"),
+			"end": end_dt.strftime("%H:%M:%S"),
+			"target_minutes": self._current_session_target_minutes if self._current_session_target_minutes is not None else int(self.target_duration.total_seconds() // 60),
+			"elapsed_hms": self._format_timedelta_hms(elapsed_td),
+		}
+		self.sessions.append(record)
+		self._current_session_start = None
+		self._current_session_target_minutes = None
+		self.paused_elapsed = timedelta(0)
+
+	def _format_timedelta_hms(self, td):
+		total_seconds = int(td.total_seconds())
+		hours = total_seconds // 3600
+		minutes = (total_seconds % 3600) // 60
+		seconds = total_seconds % 60
+		return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+	def export_statistics(self):
+		# Open macOS save dialog and export collected sessions to CSV
+		panel = NSSavePanel.savePanel()
+		panel.setAllowedFileTypes_(["csv"])
+		panel.setCanCreateDirectories_(True)
+		panel.setNameFieldStringValue_("pomodorup_stats.csv")
+		if panel.runModal() == 1:
+			url = panel.URL()
+			if url is not None:
+				path = url.path()
+				try:
+					with open(path, "w", newline="", encoding="utf-8") as f:
+						writer = csv.writer(f)
+						writer.writerow(["Id", "date", "start time", "end time", "target time", "elapsed time"])
+						for rec in self.sessions:
+							writer.writerow([
+								rec["id"],
+								rec["date"],
+								rec["start"],
+								rec["end"],
+								rec["target_minutes"],
+								rec["elapsed_hms"],
+							])
+					print(f"Statistics exported to {path}")
+				except Exception as e:
+					print(f"Failed to export statistics: {e}")
 		
 	def _rebuild_menu(self):
 		if self.icon is not None:
@@ -397,6 +468,7 @@ class PomodoroTimer:
 			pystray.MenuItem("Reset Timer", self.reset_timer),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Target Duration", target_menu),
+			pystray.MenuItem("Export Statistics", self.export_statistics),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Quit", self.quit_app)
 		)
