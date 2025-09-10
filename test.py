@@ -91,18 +91,30 @@ class PomodoroTimer:
 					color = base_colors[i]
 				bands.append((color[0], color[1], color[2], opacity))
 		else:
-			# After target: all bands shift to new colors simultaneously
-			# Color changes occur every 1/6th of target time (every part_s)
-			# Use ping-pong order: 0,1,2,3,4,5,4,3,2,1,0,1,2,...
-			def pingpong_index(k, n=6):
-				period = 2 * (n - 1)
-				m = k % period
-				return m if m < n else period - m
-			# Calculate how many color shifts have occurred since reaching target
+			# After the first loop: convert bands bottom->top toward a single target color per loop.
+			# Loop 0 (post-target): target = dark_purple (index 0), then mauve (1), fuschia (2), red (3), orange (4), yellow (5), then repeat.
+			# During each loop, bands transition one-by-one from bottom to top to the loop's target color.
 			post_target_steps = steps - 6
+			loop_index = post_target_steps // 6  # 0-based index of which solid-color loop we're in
+			pos_in_loop = post_target_steps % 6  # 0..5 number of bands (from bottom) already converted this loop
+			current_target_color = base_colors[loop_index % 6]
+
+			# Determine the "previous" color for bands not yet converted this loop
+			if loop_index == 0:
+				# First post-target loop starts from the rainbow state produced by the initial loop
+				def previous_color_for_band(band_index):
+					return base_colors[band_index]
+			else:
+				# Subsequent loops start from a solid color from the previous loop
+				previous_target_color = base_colors[(loop_index - 1) % 6]
+				def previous_color_for_band(band_index):
+					return previous_target_color
+
 			for i in range(6):
-				new_index = pingpong_index(i + post_target_steps + 1, 6)
-				color = base_colors[new_index]
+				if i <= pos_in_loop:
+					color = current_target_color
+				else:
+					color = previous_color_for_band(i)
 				opacity = 1.0
 				bands.append((color[0], color[1], color[2], opacity))
 
