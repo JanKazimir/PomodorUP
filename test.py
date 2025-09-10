@@ -86,13 +86,10 @@ class PomodoroTimer:
 		step_progress_s = elapsed_s - steps * part_s
 
 		if steps <= 5:
-			# Initial fill-in (bottom to top), each band fades in over 1s at its start
+			# Initial fill-in (bottom to top), each band appears directly in its target color
 			for i in range(6):
 				band_start_s = i * part_s
 				if elapsed_s < band_start_s:
-					# Show grey background
-					# opacity = 1.0
-					# color = grey_color
 					# Show transparent background when timer is running but not yet filled
 					if self.is_running:
 						opacity = 0.0
@@ -101,16 +98,8 @@ class PomodoroTimer:
 						# Show grey background when timer is not running
 						opacity = 1.0
 						color = grey_color
-				elif elapsed_s < band_start_s + 1.0:
-					# Fade from grey to color over 1s
-					fade_progress = (elapsed_s - band_start_s) / 1.0
-					opacity = 1.0
-					# Interpolate between grey and target color
-					r = int(grey_color[0] * (1 - fade_progress) + base_colors[i][0] * fade_progress)
-					g = int(grey_color[1] * (1 - fade_progress) + base_colors[i][1] * fade_progress)
-					b = int(grey_color[2] * (1 - fade_progress) + base_colors[i][2] * fade_progress)
-					color = (r, g, b, 255)
 				else:
+					# Show target color directly when band should be filled
 					opacity = 1.0
 					color = base_colors[i]
 				bands.append((color[0], color[1], color[2], opacity))
