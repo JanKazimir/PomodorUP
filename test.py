@@ -254,7 +254,7 @@ class PomodoroTimer:
 
 	def set_target_minutes(self, minutes):
 		# Normalize and update target + recent list
-		minutes = max(0, int(minutes))
+		minutes = max(1, min(99, int(minutes)))
 		self.target_duration = timedelta(minutes=minutes)
 		# Update MRU list
 		if minutes in self.recent_targets_minutes:
@@ -281,8 +281,19 @@ class PomodoroTimer:
 		
 	def _append_digit(self, d):
 		d = str(d)
-		if d.isdigit() and len(self._input_buffer) < 3:
+		if not d.isdigit():
+			self._rebuild_menu()
+			return
+		# Prevent leading zero; allow two digits only
+		if len(self._input_buffer) == 0:
+			if d == "0":
+				self._rebuild_menu()
+				return
+			self._input_buffer = d
+		elif len(self._input_buffer) == 1:
+			# Allow second digit (0-9)
 			self._input_buffer += d
+		# If already two digits, ignore
 		self._rebuild_menu()
 		
 	def _backspace_digit(self):
@@ -298,7 +309,7 @@ class PomodoroTimer:
 			return
 		try:
 			value = int(self._input_buffer)
-			value = max(0, value)
+			value = max(1, min(99, value))
 			self.set_target_minutes(value)
 			print(f"Target set to {value} minutes")
 		finally:
