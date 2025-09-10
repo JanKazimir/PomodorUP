@@ -1,0 +1,3 @@
+([('PomodorUP',
+   '/Users/jkzmr/_MEDIA/code/Projects/Perso/PomodorUP/dist/PomodorUP',
+   'EXECUTABLE')],)
