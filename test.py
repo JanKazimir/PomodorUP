@@ -376,9 +376,9 @@ class PomodoroTimer:
 			if delta < 0:
 				return f"{abs_delta}", (250, 250, 250, 200) #(196, 183, 255, 255)# blue
 			elif delta == 0:
-				return f"{{}}", (250, 250, 250, 200) # (33, 37, 43, 150) cool dark grey
+				return f"", (250, 250, 250, 200) # (33, 37, 43, 150) cool dark grey
 			else:
-				return f"{abs_delta}", (0, 0, 0, 50) #(100, 253, 179, 255) # green
+				return f"{abs_delta}", (33, 37, 43, 0) #(100, 253, 179, 255) # green
 		if mode == "minutes_to_target":
 			if delta >= 0:
 				return "", white
