@@ -166,8 +166,8 @@ class PomodoroTimer:
 		try:
 			font = self._get_font(38, bold=True, monospace=True)
 			bbox = draw.textbbox((0, 0), text, font=font, anchor='lt', stroke_width=0)
-			text_w = (bbox[2] - bbox[0]) + 1
-			text_h = (bbox[3] - bbox[1]) + 11
+			text_w = (bbox[2] - bbox[0]) + 2
+			text_h = (bbox[3] - bbox[1]) + 12
 			center_x = width // 2
 			center_y = height // 2
 			draw.text(
@@ -374,11 +374,11 @@ class PomodoroTimer:
 		if mode == "minutes_from_target":
 			abs_delta = abs(delta)
 			if delta < 0:
-				return f"{abs_delta}", blue
+				return f"{abs_delta}", (250, 250, 250, 200) #(196, 183, 255, 255)# blue
 			elif delta == 0:
-				return "0", white
+				return f"{{}}", (250, 250, 250, 200) # (33, 37, 43, 150) cool dark grey
 			else:
-				return f"{abs_delta}", green
+				return f"{abs_delta}", (0, 0, 0, 50) #(100, 253, 179, 255) # green
 		if mode == "minutes_to_target":
 			if delta >= 0:
 				return "", white
@@ -611,7 +611,7 @@ class PomodoroTimer:
 			pystray.MenuItem("None", lambda: self.set_text_display_mode("none"), checked=checked_factory("none")),
 			pystray.MenuItem("Minutes Elapsed", lambda: self.set_text_display_mode("minutes_elapsed"), checked=checked_factory("minutes_elapsed")),
 			pystray.MenuItem("Minutes From Target", lambda: self.set_text_display_mode("minutes_from_target"), checked=checked_factory("minutes_from_target")),
-			pystray.MenuItem("Minutes to Target", lambda: self.set_text_display_mode("minutes_to_target"), checked=checked_factory("minutes_to_target")),
+			pystray.MenuItem("Minutes To Target", lambda: self.set_text_display_mode("minutes_to_target"), checked=checked_factory("minutes_to_target")),
 			pystray.MenuItem("Minutes Past Target", lambda: self.set_text_display_mode("minutes_past_target"), checked=checked_factory("minutes_past_target")),
 		)
 
