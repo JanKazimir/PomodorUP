@@ -33,6 +33,9 @@ class PomodoroTimer:
 		# Predefined durations in minutes
 		self.predefined_durations = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 75, 90, 120, 150, 180, 210, 240]
 
+		# Text display mode: 'none' | 'minutes_elapsed' | 'minutes_from_target' | 'minutes_to_target' | 'minutes_past_target'
+		self.text_display_mode = "minutes_elapsed"
+
 		# In-menu input buffer for Set Target (string of digits or empty)
 		self._input_buffer = ""
 		# Load persisted state (sessions, recent targets, target duration)
@@ -200,9 +203,9 @@ class PomodoroTimer:
 		while self.is_running:
 			if self.start_time:
 				elapsed = self.get_elapsed_time()
-				# Display minutes only
-				minute_text = self.format_minutes_only(elapsed)
-				new_icon = self.create_icon(minute_text)
+				# Compute display per current text display mode
+				text, color = self._compute_text_and_color(elapsed)
+				new_icon = self.create_icon(text, color)
 				self.icon.icon = new_icon
 			time.sleep(1)
 		
@@ -230,10 +233,10 @@ class PomodoroTimer:
 			self.is_running = False
 			self.is_paused = True
 			self.start_time = None
-			# Show paused minutes using current delimiter preference
+			# Show paused text per current text display mode
 			elapsed = self.get_elapsed_time()
-			minute_text = self.format_minutes_only(elapsed)
-			self.icon.icon = self.create_icon(f"{minute_text}")
+			text, color = self._compute_text_and_color(elapsed)
+			self.icon.icon = self.create_icon(text, color)
 			print("Timer paused!")
 			self._rebuild_menu()
 		
@@ -321,6 +324,11 @@ class PomodoroTimer:
 			if isinstance(target_minutes, int):
 				target_minutes = max(1, min(99, target_minutes))
 				self.target_duration = timedelta(minutes=target_minutes)
+			# Restore text display mode
+			mode = data.get("text_display_mode")
+			valid_modes = {"none", "minutes_elapsed", "minutes_from_target", "minutes_to_target", "minutes_past_target"}
+			if isinstance(mode, str) and mode in valid_modes:
+				self.text_display_mode = mode
 			# Session counter resumes from max existing id
 			if self.sessions:
 				try:
@@ -341,6 +349,7 @@ class PomodoroTimer:
 				"sessions": self.sessions,
 				"recent_targets_minutes": self.recent_targets_minutes,
 				"target_minutes": int(self.target_duration.total_seconds() // 60),
+				"text_display_mode": self.text_display_mode,
 			}
 			with open(tmp_path, "w", encoding="utf-8") as f:
 				json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -348,6 +357,50 @@ class PomodoroTimer:
 		except Exception:
 			# Best-effort persistence
 			pass
+
+	def _compute_text_and_color(self, elapsed):
+		"""Return (text, color_rgba_tuple) based on current text display mode and elapsed time."""
+		white = (255, 255, 255, 255)
+		blue = (0, 122, 255, 255)   # macOS system blue
+		green = (52, 199, 89, 255)  # macOS system green
+		elapsed_minutes = int(max(0, int(elapsed.total_seconds())) // 60)
+		target_minutes = int(self.target_duration.total_seconds() // 60)
+		delta = elapsed_minutes - target_minutes
+		mode = self.text_display_mode
+		if mode == "none":
+			return "", white
+		if mode == "minutes_elapsed":
+			return f"{elapsed_minutes}", white
+		if mode == "minutes_from_target":
+			abs_delta = abs(delta)
+			if delta < 0:
+				return f"{abs_delta}", blue
+			elif delta == 0:
+				return "0", white
+			else:
+				return f"{abs_delta}", green
+		if mode == "minutes_to_target":
+			if delta >= 0:
+				return "", white
+			return f"{abs(-delta)}", white
+		if mode == "minutes_past_target":
+			if delta <= 0:
+				return "", white
+			return f"{delta}", white
+		# Fallback
+		return f"{elapsed_minutes}", white
+
+	def set_text_display_mode(self, mode):
+		valid_modes = {"none", "minutes_elapsed", "minutes_from_target", "minutes_to_target", "minutes_past_target"}
+		if mode not in valid_modes:
+			return
+		self.text_display_mode = mode
+		self._save_state()
+		# Refresh icon immediately
+		elapsed = self.get_elapsed_time()
+		text, color = self._compute_text_and_color(elapsed)
+		self.icon.icon = self.create_icon(text, color)
+		self._rebuild_menu()
 
 	def export_statistics(self):
 		# Open macOS save dialog and export collected sessions to CSV
@@ -550,6 +603,18 @@ class PomodoroTimer:
 			*predefined_items
 		)
 
+		# Text display submenu
+		mode = self.text_display_mode
+		def checked_factory(name):
+			return lambda item: mode == name
+		text_display_menu = pystray.Menu(
+			pystray.MenuItem("None", lambda: self.set_text_display_mode("none"), checked=checked_factory("none")),
+			pystray.MenuItem("Minutes Elapsed", lambda: self.set_text_display_mode("minutes_elapsed"), checked=checked_factory("minutes_elapsed")),
+			pystray.MenuItem("Minutes From Target", lambda: self.set_text_display_mode("minutes_from_target"), checked=checked_factory("minutes_from_target")),
+			pystray.MenuItem("Minutes to Target", lambda: self.set_text_display_mode("minutes_to_target"), checked=checked_factory("minutes_to_target")),
+			pystray.MenuItem("Minutes Past Target", lambda: self.set_text_display_mode("minutes_past_target"), checked=checked_factory("minutes_past_target")),
+		)
+
 		# Statistics submenu
 		stats_menu = pystray.Menu(
 			pystray.MenuItem("Export Statistics", self.export_statistics),
@@ -563,6 +628,7 @@ class PomodoroTimer:
 			pystray.MenuItem("Reset Timer", self.reset_timer),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Target Duration", target_menu),
+			pystray.MenuItem("Text Display", text_display_menu),
 			pystray.MenuItem("Statistics", stats_menu),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem(f"Target: {target_minutes} min", None, enabled=False),
