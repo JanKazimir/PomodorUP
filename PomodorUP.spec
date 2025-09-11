@@ -70,7 +70,7 @@ exe = EXE(
 app = BUNDLE(
     exe,
     name='PomodorUP.app',
-    icon=None,
+    icon='assets/PomodorUP.icns',
     bundle_identifier='com.pomodorup.app',
     info_plist={
         'LSUIElement': True,  # Hide from Dock, show only in menu bar
