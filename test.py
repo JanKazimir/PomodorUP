@@ -166,7 +166,7 @@ class PomodoroTimer:
 		try:
 			font = self._get_font(38, bold=True, monospace=True)
 			bbox = draw.textbbox((0, 0), text, font=font, anchor='lt', stroke_width=0)
-			text_w = (bbox[2] - bbox[0]) + 2
+			text_w = (bbox[2] - bbox[0]) 
 			text_h = (bbox[3] - bbox[1]) + 12
 			center_x = width // 2
 			center_y = height // 2
@@ -252,9 +252,9 @@ class PomodoroTimer:
 		self.start_time = None
 		self.paused_elapsed = timedelta(0)
 		
-		# Show target duration in red when reset
+		# Show target duration in red when reset changing to dark grey #(33, 37, 43, 0)
 		target_minutes = int(self.target_duration.total_seconds() // 60)
-		red_color = (242, 38, 89, 255)  # Red from color palette
+		red_color = (33, 37, 43, 200)  # Red from color palette, nope redufined to dark grey
 		self.icon.icon = self.create_icon(str(target_minutes), red_color)
 
 		print("Timer reset!")
@@ -378,17 +378,17 @@ class PomodoroTimer:
 			elif delta == 0:
 				return f"", (250, 250, 250, 200) # (33, 37, 43, 150) cool dark grey
 			else:
-				return f"{abs_delta}", (33, 37, 43, 0) #(100, 253, 179, 255) # green
+				return f"{abs_delta}", (33, 37, 43, 0) #this is dark grey #(100, 253, 179, 255) # green
 		if mode == "minutes_to_target":
 			if delta >= 0:
-				return "", white
+				return "", (250, 250, 250, 200) # white
 			return f"{abs(-delta)}", white
 		if mode == "minutes_past_target":
 			if delta <= 0:
-				return "", white
-			return f"{delta}", white
+				return "",  white
+			return f"{delta}", (33, 37, 43, 0) # white
 		# Fallback
-		return f"{elapsed_minutes}", white
+		return f"{elapsed_minutes}", (250, 250, 250, 200) # white
 
 	def set_text_display_mode(self, mode):
 		valid_modes = {"none", "minutes_elapsed", "minutes_from_target", "minutes_to_target", "minutes_past_target"}
