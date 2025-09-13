@@ -162,12 +162,12 @@ class PomodoroTimer:
 		image = Image.composite(bands_image, image, circle_mask)
 		draw = ImageDraw.Draw(image)
 
-		# Add timer text (color specified by parameter, monospace and bold)
+		# Add timer text (color specified by parameter, monospace and bold) ## text center, height etc... here
 		try:
 			font = self._get_font(38, bold=True, monospace=True)
 			bbox = draw.textbbox((0, 0), text, font=font, anchor='lt', stroke_width=0)
-			text_w = (bbox[2] - bbox[0]) 
-			text_h = (bbox[3] - bbox[1]) + 12
+			text_w = (bbox[2] - bbox[0]) - 2
+			text_h = (bbox[3] - bbox[1])  + 16
 			center_x = width // 2
 			center_y = height // 2
 			draw.text(
@@ -651,9 +651,27 @@ class PomodoroTimer:
 		self.icon.run()
 
 	def _get_font(self, size, bold=False, monospace=False):
-		"""Try to load a macOS system font at given size; fallback to default.
-		Priority: monospace+bold > monospace > bold > default
+		"""Try to load the Roadrage font first, then fallback to system fonts.
+		Priority: Roadrage > monospace+bold > monospace > bold > default
 		"""
+		# First, try to load the Custom font from assets
+		try:
+			# Handle both development and PyInstaller bundled scenarios
+			if getattr(sys, 'frozen', False):
+				# Running from PyInstaller bundle
+				bundle_dir = sys._MEIPASS
+				font_path = os.path.join(bundle_dir, "assets/fonts", "Doto-VariableFont_ROND,wght.ttf")
+			else:
+				# Running from source
+				script_dir = os.path.dirname(os.path.abspath(__file__))
+				font_path = os.path.join(script_dir, "assets/fonts/Doto/static", "Doto_Rounded-ExtraBold.ttf")
+			
+			if os.path.exists(font_path):
+				return ImageFont.truetype(font_path, size)
+		except Exception:
+			pass
+		
+		# Fallback to system fonts if Roadrage is not available
 		if monospace and bold:
 			# Try monospace bold fonts first
 			for path in [

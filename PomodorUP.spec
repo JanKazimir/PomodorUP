@@ -6,7 +6,7 @@ a = Analysis(
     ['test.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('assets/fonts/*', 'assets')],
     hiddenimports=[
         'pystray._darwin',
         'pystray._appindicator',
