@@ -166,8 +166,8 @@ class PomodoroTimer:
 		try:
 			font = self._get_font(38, bold=True, monospace=True)
 			bbox = draw.textbbox((0, 0), text, font=font, anchor='lt', stroke_width=0)
-			text_w = (bbox[2] - bbox[0]) - 2
-			text_h = (bbox[3] - bbox[1])  + 16
+			text_w = (bbox[2] - bbox[0]) + 0
+			text_h = (bbox[3] - bbox[1])  + 30
 			center_x = width // 2
 			center_y = height // 2
 			draw.text(
@@ -660,11 +660,11 @@ class PomodoroTimer:
 			if getattr(sys, 'frozen', False):
 				# Running from PyInstaller bundle
 				bundle_dir = sys._MEIPASS
-				font_path = os.path.join(bundle_dir, "assets/fonts", "Doto-VariableFont_ROND,wght.ttf")
+				font_path = os.path.join(bundle_dir, "assets/fonts/Space_Mono/", "SpaceMono-Bold.ttf")
 			else:
 				# Running from source
 				script_dir = os.path.dirname(os.path.abspath(__file__))
-				font_path = os.path.join(script_dir, "assets/fonts/Doto/static", "Doto_Rounded-ExtraBold.ttf")
+				font_path = os.path.join(script_dir, "assets/fonts/Space_Mono/", "SpaceMono-Bold.ttf")
 			
 			if os.path.exists(font_path):
 				return ImageFont.truetype(font_path, size)
