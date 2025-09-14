@@ -5,10 +5,31 @@ import pystray
 from PIL import Image, ImageDraw, ImageFont
 import sys
 import csv
-from Cocoa import NSSavePanel
+from Cocoa import NSSavePanel, NSWorkspace, NSNotificationCenter, NSObject
+import objc
 import os
 import json
 import subprocess
+
+class SleepMonitor(NSObject):
+	def init(self):
+		self = objc.super(SleepMonitor, self).init()
+		if self is None:
+			return None
+		self.timer_callback = None
+		return self
+	
+	def setTimerCallback_(self, callback):
+		self.timer_callback = callback
+		
+	def onSleepNotification_(self, notification):
+		"""Called when the system is about to sleep"""
+		if self.timer_callback:
+			self.timer_callback()
+	
+	def onWakeNotification_(self, notification):
+		"""Called when the system wakes up"""
+		pass  # We don't need to do anything on wake
 
 class PomodoroTimer:
 	def __init__(self):
@@ -38,10 +59,16 @@ class PomodoroTimer:
 
 		# In-menu input buffer for Set Target (string of digits or empty)
 		self._input_buffer = ""
+		
+		# Sleep monitoring
+		self.sleep_monitor = SleepMonitor.alloc().init()
+		self.sleep_monitor.setTimerCallback_(self._on_sleep_detected)
+		self._setup_sleep_monitoring()
+		
 		# Load persisted state (sessions, recent targets, target duration)
 		self._load_state()
 		
-	def create_icon(self, text="0", text_color=(255, 255, 255, 255)):
+	def create_icon(self, text="0", text_color=(255, 255, 255, 255), use_grey_rainbow=False):
 		# Create an icon with transparent background and centered text
 		width = 64
 		height = 64
@@ -54,14 +81,25 @@ class PomodoroTimer:
 		inner_height = circle_bbox[3] - circle_bbox[1]
 
 		# Prepare band colors bottom -> top
-		band_colors_hex = [
-			"#5E46D2FF",  # dark_purple
-			"#8130C2FF",  # mauve
-			"#A5268CFF",  # fuschia
-			"#F22659FF",  # red
-			"#FF663FFF",  # orange
-			"#F2CC3FFF",  # yellow
-		]
+		if use_grey_rainbow:
+			# Grey rainbow colors from dark to light
+			band_colors_hex = [
+				"#2A2A2AFF",  # dark grey
+				"#404040FF",  # medium dark grey
+				"#565656FF",  # medium grey
+				"#6C6C6CFF",  # medium light grey
+				"#828282FF",  # light grey
+				"#989898FF",  # very light grey
+			]
+		else:
+			band_colors_hex = [
+				"#5E46D2FF",  # dark_purple
+				"#8130C2FF",  # mauve
+				"#A5268CFF",  # fuschia
+				"#F22659FF",  # red
+				"#FF663FFF",  # orange
+				"#F2CC3FFF",  # yellow
+			]
 
 		def hex_to_rgba_tuple(h):
 			# Expect #RRGGBBAA
@@ -88,7 +126,16 @@ class PomodoroTimer:
 		steps = int(elapsed_s // part_s)
 		step_progress_s = elapsed_s - steps * part_s
 
-		if steps <= 5:
+		# Check if we should show grey rainbow (reset state)
+		show_grey_rainbow = use_grey_rainbow or (not self.is_running and elapsed_s == 0)
+
+		if show_grey_rainbow:
+			# Show full grey rainbow when in reset state
+			for i in range(6):
+				opacity = 255
+				color = base_colors[i]
+				bands.append((color[0], color[1], color[2], opacity))
+		elif steps <= 5:
 			# Initial fill-in (bottom to top), each band appears directly in its target color
 			for i in range(6):
 				band_start_s = i * part_s
@@ -252,10 +299,9 @@ class PomodoroTimer:
 		self.start_time = None
 		self.paused_elapsed = timedelta(0)
 		
-		# Show target duration in red when reset changing to dark grey #(33, 37, 43, 0)
-		target_minutes = int(self.target_duration.total_seconds() // 60)
-		red_color = (33, 37, 43, 200)  # Red from color palette, nope redufined to dark grey
-		self.icon.icon = self.create_icon(str(target_minutes), red_color)
+		# Show grey rainbow when reset
+		white_color = (255, 255, 255, 255)
+		self.icon.icon = self.create_icon("", white_color, use_grey_rainbow=True)
 
 		print("Timer reset!")
 		# Persist state after reset
@@ -270,6 +316,14 @@ class PomodoroTimer:
 		# Persist before exit
 		self._save_state()
 		self.is_running = False
+		
+		# Clean up sleep monitoring
+		try:
+			nc = NSNotificationCenter.defaultCenter()
+			nc.removeObserver_(self.sleep_monitor)
+		except Exception:
+			pass
+		
 		self.icon.stop()
 		sys.exit()
 
@@ -451,6 +505,40 @@ class PomodoroTimer:
 		if self.icon is not None:
 			self.icon.menu = self.create_menu()
 			self.icon.update_menu()
+	
+	def _on_menu_opened(self):
+		"""Called when the menu is opened to refresh the elapsed time display"""
+		self._rebuild_menu()
+	
+	def _setup_sleep_monitoring(self):
+		"""Set up system sleep/wake notification monitoring"""
+		try:
+			# Get the default notification center
+			nc = NSNotificationCenter.defaultCenter()
+			
+			# Add observer for system sleep notifications
+			nc.addObserver_selector_name_object_(
+				self.sleep_monitor,
+				"onSleepNotification:",
+				"NSWorkspaceWillSleepNotification",
+				None
+			)
+			
+			# Add observer for system wake notifications (optional)
+			nc.addObserver_selector_name_object_(
+				self.sleep_monitor,
+				"onWakeNotification:",
+				"NSWorkspaceDidWakeNotification",
+				None
+			)
+		except Exception as e:
+			print(f"Failed to set up sleep monitoring: {e}")
+	
+	def _on_sleep_detected(self):
+		"""Called when the system is about to sleep - pause the timer if running"""
+		if self.is_running:
+			print("System sleep detected - pausing timer")
+			self.pause_timer()
 		
 	def _recent_targets_menu_items(self):
 		# Build a list of MenuItems for recent targets (skip duplicates, most recent first)
@@ -488,10 +576,10 @@ class PomodoroTimer:
 		self.recent_targets_minutes.insert(0, minutes)
 		self.recent_targets_minutes = self.recent_targets_minutes[: self.max_recent_targets]
 		
-		# Update icon to show target duration in red if timer is not running
+		# Update icon to show grey rainbow if timer is not running
 		if not self.is_running:
-			red_color = (242, 38, 89, 255)  # Red from color palette
-			self.icon.icon = self.create_icon(str(minutes), red_color)
+			white_color = (255, 255, 255, 255)
+			self.icon.icon = self.create_icon("", white_color, use_grey_rainbow=True)
 		# Persist new target and recent list
 		self._save_state()
 		
@@ -586,7 +674,7 @@ class PomodoroTimer:
 		start_or_resume_label = "Start Timer" if not (self.is_paused or self.is_running) else ("Resume Timer" if self.is_paused and not self.is_running else "Start Timer")
 		pause_label = "Pause Timer"
 
-		# Get current timer information
+		# Get current timer information - this will be calculated fresh each time the menu is created
 		elapsed = self.get_elapsed_time()
 		elapsed_formatted = self.format_time(elapsed)
 		target_minutes = int(self.target_duration.total_seconds() // 60)
@@ -632,17 +720,16 @@ class PomodoroTimer:
 			pystray.MenuItem("Statistics", stats_menu),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem(f"Target: {target_minutes} min", None, enabled=False),
-			pystray.MenuItem(f"Elapsed: {elapsed_formatted}", None, enabled=False),
+			pystray.MenuItem(lambda item: f"Elapsed: {self.format_time(self.get_elapsed_time())}", None, enabled=False),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Quit", self.quit_app)
 		)
 		return menu
 		
 	def run(self):
-		# Create initial icon showing target duration in red
-		initial_minutes = int(self.target_duration.total_seconds() // 60)
-		red_color = (242, 38, 89, 255)  # Red from color palette
-		initial_icon = self.create_icon(str(initial_minutes), red_color)
+		# Create initial icon showing grey rainbow
+		white_color = (255, 255, 255, 255)
+		initial_icon = self.create_icon("", white_color, use_grey_rainbow=True)
 		
 		# Create the system tray icon
 		self.icon = pystray.Icon("PomodorUP", initial_icon, "PomodorUP Timer", self.create_menu())
