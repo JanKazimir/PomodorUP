@@ -214,7 +214,7 @@ class PomodoroTimer:
 			font = self._get_font(38, bold=True, monospace=True)
 			bbox = draw.textbbox((0, 0), text, font=font, anchor='lt', stroke_width=0)
 			text_w = (bbox[2] - bbox[0]) + 0
-			text_h = (bbox[3] - bbox[1])  + 25
+			text_h = (bbox[3] - bbox[1])  + 15
 			center_x = width // 2
 			center_y = height // 2
 			draw.text(
@@ -428,21 +428,21 @@ class PomodoroTimer:
 		if mode == "minutes_from_target":
 			abs_delta = abs(delta)
 			if delta < 0:
-				return f"{abs_delta}", (250, 250, 250, 200) #(196, 183, 255, 255)# blue
+				return f"{abs_delta}", (250, 250, 250, 250) #(196, 183, 255, 255)# blue
 			elif delta == 0:
-				return f"", (250, 250, 250, 200) # (33, 37, 43, 150) cool dark grey
+				return f"", (250, 250, 250, 250) # (33, 37, 43, 150) cool dark grey
 			else:
 				return f"{abs_delta}", (33, 37, 43, 0) #this is dark grey #(100, 253, 179, 255) # green
 		if mode == "minutes_to_target":
 			if delta >= 0:
-				return "", (250, 250, 250, 200) # white
+				return "", (250, 250, 250, 250) # white
 			return f"{abs(-delta)}", white
 		if mode == "minutes_past_target":
 			if delta <= 0:
 				return "",  white
 			return f"{delta}", (33, 37, 43, 0) # white
 		# Fallback
-		return f"{elapsed_minutes}", (250, 250, 250, 200) # white
+		return f"{elapsed_minutes}", (250, 250, 250, 250) # white
 
 	def set_text_display_mode(self, mode):
 		valid_modes = {"none", "minutes_elapsed", "minutes_from_target", "minutes_to_target", "minutes_past_target"}
