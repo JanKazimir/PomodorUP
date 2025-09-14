@@ -214,7 +214,7 @@ class PomodoroTimer:
 			font = self._get_font(38, bold=True, monospace=True)
 			bbox = draw.textbbox((0, 0), text, font=font, anchor='lt', stroke_width=0)
 			text_w = (bbox[2] - bbox[0]) + 0
-			text_h = (bbox[3] - bbox[1])  + 30
+			text_h = (bbox[3] - bbox[1])  + 25
 			center_x = width // 2
 			center_y = height // 2
 			draw.text(
