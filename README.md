@@ -25,5 +25,5 @@ I hope you enjoy it.
 - Reset the timer when computer goes to sleep
 - Make a starting timer animation.
 - Add sounds
-- Change the way the custom tiemr is set.
-- Fix the menu so the elapsed item gets updated live.
+- Change the way the custom target time is set.
+- Fix the menu so the elapsed time item gets updated live.
