@@ -13,7 +13,7 @@ That counts Up, instead of down.
 When you've recovered, feel free to try it out. It's free. 
 
 
-The premise is that a pomodoro timer should tell you the minimum time to stay forcused, not interrupt you while you are. This does exactly that, in *style*.
+The premise is that a pomodoro timer should tell you the minimum time to stay focused, not interrupt you while you are. This does exactly that, in *style*.
 
 I hope you enjoy it.
 
