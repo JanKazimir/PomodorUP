@@ -101,6 +101,16 @@ class PomodoroTimer:
 				"#F2CC3FFF",  # yellow
 			]
 
+		# Grey rainbow colors for unfilled bands during running
+		grey_band_colors_hex = [
+			"#2A2A2AFF",  # dark grey
+			"#404040FF",  # medium dark grey
+			"#565656FF",  # medium grey
+			"#6C6C6CFF",  # medium light grey
+			"#828282FF",  # light grey
+			"#989898FF",  # very light grey
+		]
+
 		def hex_to_rgba_tuple(h):
 			# Expect #RRGGBBAA
 			r = int(h[1:3], 16)
@@ -110,6 +120,7 @@ class PomodoroTimer:
 			return (r, g, b, a)
 
 		base_colors = [hex_to_rgba_tuple(h) for h in band_colors_hex]
+		grey_base_colors = [hex_to_rgba_tuple(h) for h in grey_band_colors_hex]
 
 		# Compute elapsed seconds and part size
 		elapsed = self.get_elapsed_time()
@@ -140,10 +151,10 @@ class PomodoroTimer:
 			for i in range(6):
 				band_start_s = i * part_s
 				if elapsed_s < band_start_s:
-					# Show transparent background when timer is running but not yet filled
+					# Show grey bands when timer is running but not yet filled
 					if self.is_running:
-						opacity = 0.0
-						color = grey_color
+						opacity = 1.0
+						color = grey_base_colors[i]
 					else:
 						# Show grey background when timer is not running
 						opacity = 1.0
