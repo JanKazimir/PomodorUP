@@ -16,20 +16,25 @@ class SleepMonitor(NSObject):
 		self = objc.super(SleepMonitor, self).init()
 		if self is None:
 			return None
-		self.timer_callback = None
+		self.sleep_callback = None
+		self.wake_callback = None
 		return self
 	
-	def setTimerCallback_(self, callback):
-		self.timer_callback = callback
+	def setSleepCallback_(self, callback):
+		self.sleep_callback = callback
+	
+	def setWakeCallback_(self, callback):
+		self.wake_callback = callback
 		
 	def onSleepNotification_(self, notification):
 		"""Called when the system is about to sleep"""
-		if self.timer_callback:
-			self.timer_callback()
+		if self.sleep_callback:
+			self.sleep_callback()
 	
 	def onWakeNotification_(self, notification):
-		"""Called when the system wakes up"""
-		pass  # We don't need to do anything on wake
+		"""Called when the system wakes up - reset the timer if it was running"""
+		if self.wake_callback:
+			self.wake_callback()
 
 class PomodoroTimer:
 	def __init__(self):
@@ -62,7 +67,8 @@ class PomodoroTimer:
 		
 		# Sleep monitoring
 		self.sleep_monitor = SleepMonitor.alloc().init()
-		self.sleep_monitor.setTimerCallback_(self._on_sleep_detected)
+		self.sleep_monitor.setSleepCallback_(self._on_sleep_detected)
+		self.sleep_monitor.setWakeCallback_(self._on_wake_detected)
 		self._setup_sleep_monitoring()
 		
 		# Load persisted state (sessions, recent targets, target duration)
@@ -546,10 +552,14 @@ class PomodoroTimer:
 			print(f"Failed to set up sleep monitoring: {e}")
 	
 	def _on_sleep_detected(self):
-		"""Called when the system is about to sleep - pause the timer if running"""
+		"""Called when the system is about to sleep - no action needed"""
+		pass
+
+	def _on_wake_detected(self):
+		"""Called when the system wakes up - reset the timer if it was running"""
 		if self.is_running:
-			print("System sleep detected - pausing timer")
-			self.pause_timer()
+			print("System wake detected - resetting timer")
+			self.reset_timer()
 		
 	def _recent_targets_menu_items(self):
 		# Build a list of MenuItems for recent targets (skip duplicates, most recent first)
