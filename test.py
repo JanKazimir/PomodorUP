@@ -5,36 +5,11 @@ import pystray
 from PIL import Image, ImageDraw, ImageFont
 import sys
 import csv
-from Cocoa import NSSavePanel, NSWorkspace, NSNotificationCenter, NSObject
-import objc
+from Cocoa import NSSavePanel
 import os
 import json
 import subprocess
 
-class SleepMonitor(NSObject):
-	def init(self):
-		self = objc.super(SleepMonitor, self).init()
-		if self is None:
-			return None
-		self.sleep_callback = None
-		self.wake_callback = None
-		return self
-	
-	def setSleepCallback_(self, callback):
-		self.sleep_callback = callback
-	
-	def setWakeCallback_(self, callback):
-		self.wake_callback = callback
-		
-	def onSleepNotification_(self, notification):
-		"""Called when the system is about to sleep"""
-		if self.sleep_callback:
-			self.sleep_callback()
-	
-	def onWakeNotification_(self, notification):
-		"""Called when the system wakes up - reset the timer if it was running"""
-		if self.wake_callback:
-			self.wake_callback()
 
 class PomodoroTimer:
 	def __init__(self):
@@ -64,13 +39,7 @@ class PomodoroTimer:
 
 		# In-menu input buffer for Set Target (string of digits or empty)
 		self._input_buffer = ""
-		
-		# Sleep monitoring
-		self.sleep_monitor = SleepMonitor.alloc().init()
-		self.sleep_monitor.setSleepCallback_(self._on_sleep_detected)
-		self.sleep_monitor.setWakeCallback_(self._on_wake_detected)
-		self._setup_sleep_monitoring()
-		
+
 		# Load persisted state (sessions, recent targets, target duration)
 		self._load_state()
 		
@@ -333,14 +302,7 @@ class PomodoroTimer:
 		# Persist before exit
 		self._save_state()
 		self.is_running = False
-		
-		# Clean up sleep monitoring
-		try:
-			nc = NSNotificationCenter.defaultCenter()
-			nc.removeObserver_(self.sleep_monitor)
-		except Exception:
-			pass
-		
+
 		self.icon.stop()
 		sys.exit()
 
@@ -527,39 +489,7 @@ class PomodoroTimer:
 		"""Called when the menu is opened to refresh the elapsed time display"""
 		self._rebuild_menu()
 	
-	def _setup_sleep_monitoring(self):
-		"""Set up system sleep/wake notification monitoring"""
-		try:
-			# Get the default notification center
-			nc = NSNotificationCenter.defaultCenter()
-			
-			# Add observer for system sleep notifications
-			nc.addObserver_selector_name_object_(
-				self.sleep_monitor,
-				"onSleepNotification:",
-				"NSWorkspaceWillSleepNotification",
-				None
-			)
-			
-			# Add observer for system wake notifications (optional)
-			nc.addObserver_selector_name_object_(
-				self.sleep_monitor,
-				"onWakeNotification:",
-				"NSWorkspaceDidWakeNotification",
-				None
-			)
-		except Exception as e:
-			print(f"Failed to set up sleep monitoring: {e}")
-	
-	def _on_sleep_detected(self):
-		"""Called when the system is about to sleep - no action needed"""
-		pass
 
-	def _on_wake_detected(self):
-		"""Called when the system wakes up - reset the timer if it was running"""
-		if self.is_running:
-			print("System wake detected - resetting timer")
-			self.reset_timer()
 		
 	def _recent_targets_menu_items(self):
 		# Build a list of MenuItems for recent targets (skip duplicates, most recent first)
