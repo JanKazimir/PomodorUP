@@ -5,10 +5,12 @@ import pystray
 from PIL import Image, ImageDraw, ImageFont
 import sys
 import csv
-from Cocoa import NSSavePanel
+from Cocoa import NSSavePanel, NSWorkspace, NSNotificationCenter
+from CoreFoundation import CFRunLoopGetCurrent, CFRunLoopRun, CFRunLoopStop
 import os
 import json
 import subprocess
+import objc
 
 
 class PomodoroTimer:
@@ -30,7 +32,7 @@ class PomodoroTimer:
 		self.target_duration = timedelta(minutes=30)
 		self.recent_targets_minutes = [30]
 		self.max_recent_targets = 5
-		
+
 		# Predefined durations in minutes
 		self.predefined_durations = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 75, 90, 120, 150, 180, 210, 240]
 
@@ -40,9 +42,45 @@ class PomodoroTimer:
 		# In-menu input buffer for Set Target (string of digits or empty)
 		self._input_buffer = ""
 
+		# Power management - track sleep state
+		self._system_is_asleep = False
+
 		# Load persisted state (sessions, recent targets, target duration)
 		self._load_state()
-		
+
+		# Set up power management notifications
+		self._setup_power_notifications()
+
+	def _setup_power_notifications(self):
+		"""Set up notifications for system sleep/wake events using polling approach."""
+		try:
+			# Use a polling approach to detect sleep/wake cycles
+			self._last_check_time = datetime.now()
+			self._sleep_detection_thread = threading.Thread(target=self._monitor_system_sleep, daemon=True)
+			self._sleep_detection_thread.start()
+			print("Sleep detection monitoring started")
+		except Exception as e:
+			print(f"Failed to set up sleep detection: {e}")
+
+	def _monitor_system_sleep(self):
+		"""Monitor for system sleep by checking time continuity."""
+		while True:
+			try:
+				current_time = datetime.now()
+				time_diff = (current_time - self._last_check_time).total_seconds()
+
+				# If more than 30 seconds have passed in what should be 10 seconds,
+				# the system likely went to sleep
+				if time_diff > 30:  # Allow for some variance
+					print("System woke from sleep - resetting timer")
+					self.reset_timer()
+
+				self._last_check_time = current_time
+				time.sleep(10)  # Check every 10 seconds
+			except Exception as e:
+				print(f"Sleep monitoring error: {e}")
+				time.sleep(10)
+
 	def create_icon(self, text="0", text_color=(255, 255, 255, 255), use_grey_rainbow=False):
 		# Create an icon with transparent background and centered text
 		width = 64
@@ -678,13 +716,23 @@ class PomodoroTimer:
 		return menu
 		
 	def run(self):
+		# Start CFRunLoop in a separate thread to process notifications
+		def run_cocoa_event_loop():
+			try:
+				CFRunLoopRun()
+			except Exception as e:
+				print(f"CFRunLoop error: {e}")
+
+		cocoa_thread = threading.Thread(target=run_cocoa_event_loop, daemon=True)
+		cocoa_thread.start()
+
 		# Create initial icon showing grey rainbow
 		white_color = (255, 255, 255, 255)
 		initial_icon = self.create_icon("", white_color, use_grey_rainbow=True)
-		
+
 		# Create the system tray icon
 		self.icon = pystray.Icon("PomodorUP", initial_icon, "PomodorUP Timer", self.create_menu())
-		
+
 		# Run the app
 		self.icon.run()
 
