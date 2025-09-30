@@ -7,10 +7,25 @@ import sys
 import csv
 from Cocoa import NSSavePanel, NSWorkspace, NSNotificationCenter
 from CoreFoundation import CFRunLoopGetCurrent, CFRunLoopRun, CFRunLoopStop
+from Foundation import NSObject
 import os
 import json
 import subprocess
 import objc
+
+
+class SleepObserver(NSObject):
+    def init(self):
+        self = objc.super(SleepObserver, self).init()
+        if self is None:
+            return None
+        self.timer = None
+        return self
+
+    def systemDidWake_(self, notification):
+        print("System woke from sleep - resetting timer")
+        if self.timer:
+            self.timer.reset_timer()
 
 
 class PomodoroTimer:
@@ -42,9 +57,6 @@ class PomodoroTimer:
 		# In-menu input buffer for Set Target (string of digits or empty)
 		self._input_buffer = ""
 
-		# Power management - track sleep state
-		self._system_is_asleep = False
-
 		# Load persisted state (sessions, recent targets, target duration)
 		self._load_state()
 
@@ -52,34 +64,15 @@ class PomodoroTimer:
 		self._setup_power_notifications()
 
 	def _setup_power_notifications(self):
-		"""Set up notifications for system sleep/wake events using polling approach."""
+		"""Set up notifications for system sleep/wake events."""
 		try:
-			# Use a polling approach to detect sleep/wake cycles
-			self._last_check_time = datetime.now()
-			self._sleep_detection_thread = threading.Thread(target=self._monitor_system_sleep, daemon=True)
-			self._sleep_detection_thread.start()
-			print("Sleep detection monitoring started")
+			observer = SleepObserver.alloc().init()
+			observer.timer = self
+			nc = NSWorkspace.sharedWorkspace().notificationCenter()
+			nc.addObserver_selector_name_object_(observer, 'systemDidWake:', "NSWorkspaceDidWakeNotification", None)
+			print("Sleep detection notifications set up")
 		except Exception as e:
 			print(f"Failed to set up sleep detection: {e}")
-
-	def _monitor_system_sleep(self):
-		"""Monitor for system sleep by checking time continuity."""
-		while True:
-			try:
-				current_time = datetime.now()
-				time_diff = (current_time - self._last_check_time).total_seconds()
-
-				# If more than 30 seconds have passed in what should be 10 seconds,
-				# the system likely went to sleep
-				if time_diff > 30:  # Allow for some variance
-					print("System woke from sleep - resetting timer")
-					self.reset_timer()
-
-				self._last_check_time = current_time
-				time.sleep(10)  # Check every 10 seconds
-			except Exception as e:
-				print(f"Sleep monitoring error: {e}")
-				time.sleep(10)
 
 	def create_icon(self, text="0", text_color=(255, 255, 255, 255), use_grey_rainbow=False):
 		# Create an icon with transparent background and centered text
