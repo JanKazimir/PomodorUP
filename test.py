@@ -7,7 +7,7 @@ import sys
 import csv
 from Cocoa import NSSavePanel, NSWorkspace, NSNotificationCenter
 from CoreFoundation import CFRunLoopGetCurrent, CFRunLoopRun, CFRunLoopStop
-from Foundation import NSObject
+from Foundation import NSObject, NSDistributedNotificationCenter
 import os
 import json
 import subprocess
@@ -22,8 +22,8 @@ class SleepObserver(NSObject):
         self.timer = None
         return self
 
-    def systemDidWake_(self, notification):
-        print("System woke from sleep - resetting timer")
+    def systemWillSleep_(self, notification):
+        print("System going to sleep - resetting timer")
         if self.timer:
             self.timer.reset_timer()
         else:
@@ -74,8 +74,8 @@ class PomodoroTimer:
 			observer = SleepObserver.alloc().init()
 			observer.timer = self
 			self._sleep_observer = observer  # Keep reference to prevent GC
-			nc = NSWorkspace.sharedWorkspace().notificationCenter()
-			nc.addObserver_selector_name_object_(observer, 'systemDidWake:', "NSWorkspaceDidWakeNotification", None)
+			nc = NSDistributedNotificationCenter.defaultCenter()
+			nc.addObserver_selector_name_object_(observer, 'systemWillSleep:', "com.apple.screenIsLocked", None)
 			print("Sleep detection notifications set up and observer added")
 		except Exception as e:
 			print(f"Failed to set up sleep detection: {e}")
