@@ -26,6 +26,8 @@ class SleepObserver(NSObject):
         print("System woke from sleep - resetting timer")
         if self.timer:
             self.timer.reset_timer()
+        else:
+            print("No timer reference in observer")
 
 
 class PomodoroTimer:
@@ -57,6 +59,9 @@ class PomodoroTimer:
 		# In-menu input buffer for Set Target (string of digits or empty)
 		self._input_buffer = ""
 
+		# Sleep observer reference
+		self._sleep_observer = None
+
 		# Load persisted state (sessions, recent targets, target duration)
 		self._load_state()
 
@@ -68,9 +73,10 @@ class PomodoroTimer:
 		try:
 			observer = SleepObserver.alloc().init()
 			observer.timer = self
+			self._sleep_observer = observer  # Keep reference to prevent GC
 			nc = NSWorkspace.sharedWorkspace().notificationCenter()
 			nc.addObserver_selector_name_object_(observer, 'systemDidWake:', "NSWorkspaceDidWakeNotification", None)
-			print("Sleep detection notifications set up")
+			print("Sleep detection notifications set up and observer added")
 		except Exception as e:
 			print(f"Failed to set up sleep detection: {e}")
 
