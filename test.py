@@ -277,6 +277,7 @@ class PomodoroTimer:
 				text, color = self._compute_text_and_color(elapsed)
 				new_icon = self.create_icon(text, color)
 				self.icon.icon = new_icon
+				self._rebuild_menu()
 			time.sleep(1)
 		
 	def start_timer(self):
