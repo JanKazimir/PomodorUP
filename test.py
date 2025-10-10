@@ -53,7 +53,7 @@ class PomodoroTimer:
 		# Predefined durations in minutes
 		self.predefined_durations = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 75, 90, 120, 150, 180, 210, 240]
 
-		# Text display mode: 'none' | 'minutes_elapsed' | 'minutes_from_target' | 'minutes_to_target' | 'minutes_past_target' | 'session_drifts' | 'daily_drifts' | 'daily_drifts_if_above_zero' | 'total_drifts'
+		# Text display mode: 'none' | 'minutes_elapsed' | 'minutes_from_target' | 'minutes_to_target' | 'minutes_past_target' | 'session_drifts' | 'daily_drifts' | 'daily_drifts_if_above_zero' | 'total_drifts' | 'session_count_if_above_zero'
 		self.text_display_mode = "minutes_elapsed"
 
 		# In-menu input buffer for Set Target (string of digits or empty)
@@ -259,7 +259,9 @@ class PomodoroTimer:
 
 		# Add timer text (color specified by parameter, monospace and bold) ## text center, height etc... here
 		try:
-			font = self._get_font(38, bold=True, monospace=True)
+			# Determine if we should use italic font for drift counts
+			use_italic = self.text_display_mode in ["session_drifts", "daily_drifts", "daily_drifts_if_above_zero", "total_drifts"]
+			font = self._get_font(38, bold=True, monospace=True, italic=use_italic)
 			bbox = draw.textbbox((0, 0), text, font=font, anchor='lt', stroke_width=0)
 			text_w = (bbox[2] - bbox[0]) + 0
 			text_h = (bbox[3] - bbox[1])  + 27
@@ -527,11 +529,17 @@ class PomodoroTimer:
 		elif mode == "total_drifts":
 			# Display total drift count in italics
 			return f"{self.drift_count}", (250, 250, 250, 250)  # white
+		elif mode == "session_count_if_above_zero":
+			# Display session count only if above zero
+			if self._session_counter > 0:
+				return f"{self._session_counter}", (250, 250, 250, 250)  # white
+			else:
+				return "", (250, 250, 250, 250)  # white
 		# Fallback
 		return f"{elapsed_minutes}", (250, 250, 250, 250) # white
 
 	def set_text_display_mode(self, mode):
-		valid_modes = {"none", "minutes_elapsed", "minutes_from_target", "minutes_to_target", "minutes_past_target", "session_drifts", "daily_drifts", "daily_drifts_if_above_zero", "total_drifts"}
+		valid_modes = {"none", "minutes_elapsed", "minutes_from_target", "minutes_to_target", "minutes_past_target", "session_drifts", "daily_drifts", "daily_drifts_if_above_zero", "total_drifts", "session_count_if_above_zero"}
 		if mode not in valid_modes:
 			return
 		self.text_display_mode = mode
@@ -796,6 +804,7 @@ class PomodoroTimer:
 			pystray.MenuItem("Daily Drifts", lambda: self.set_text_display_mode("daily_drifts"), checked=checked_factory("daily_drifts")),
 			pystray.MenuItem("Daily Drifts (if > 0)", lambda: self.set_text_display_mode("daily_drifts_if_above_zero"), checked=checked_factory("daily_drifts_if_above_zero")),
 			pystray.MenuItem("Total Drifts", lambda: self.set_text_display_mode("total_drifts"), checked=checked_factory("total_drifts")),
+			pystray.MenuItem("Session Count (if > 0)", lambda: self.set_text_display_mode("session_count_if_above_zero"), checked=checked_factory("session_count_if_above_zero")),
 		)
 
 		# Statistics submenu
@@ -814,6 +823,14 @@ class PomodoroTimer:
 			pystray.MenuItem("Reset Today's Drift", self.reset_today_drift_count),
 			pystray.MenuItem("Reset Session Drift", self.reset_session_drift_count),
 			pystray.MenuItem("Reset Total Drift", self.reset_drift_count),
+			pystray.Menu.SEPARATOR,
+			pystray.MenuItem("ℹ️ The Drift Counter tracks", None, enabled=False),
+			pystray.MenuItem("distractions to bring", None, enabled=False),
+			pystray.MenuItem("conscious attention to", None, enabled=False),
+			pystray.MenuItem("counted objects. Click", None, enabled=False),
+			pystray.MenuItem("'Drift +1' to increment.", None, enabled=False),
+			pystray.MenuItem("Session resets with timer,", None, enabled=False),
+			pystray.MenuItem("daily at 3AM, total manually.", None, enabled=False),
 		)
 
 		menu = pystray.Menu(
@@ -867,7 +884,7 @@ class PomodoroTimer:
 		# Run the app
 		self.icon.run()
 
-	def _get_font(self, size, bold=False, monospace=False):
+	def _get_font(self, size, bold=False, monospace=False, italic=False):
 		"""Try to load the Roadrage font first, then fallback to system fonts.
 		Priority: Roadrage > monospace+bold > monospace > bold > default
 		"""
@@ -882,14 +899,36 @@ class PomodoroTimer:
 				# Running from source
 				script_dir = os.path.dirname(os.path.abspath(__file__))
 				font_path = os.path.join(script_dir, "assets/fonts/Space_Mono/", "SpaceMono-Bold.ttf")
-			
+
 			if os.path.exists(font_path):
 				return ImageFont.truetype(font_path, size)
 		except Exception:
 			pass
-		
+
 		# Fallback to system fonts if Roadrage is not available
-		if monospace and bold:
+		if monospace and bold and italic:
+			# Try monospace bold italic fonts first
+			for path in [
+				"/System/Library/Fonts/Menlo.ttc",  # Menlo Bold Italic
+				"/System/Library/Fonts/Monaco.ttf",  # Monaco Bold
+				"/System/Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-BoldItalic.ttf",
+			]:
+				try:
+					return ImageFont.truetype(path, size)
+				except Exception:
+					continue
+		elif monospace and italic:
+			# Try monospace italic fonts
+			for path in [
+				"/System/Library/Fonts/Menlo.ttc",  # Menlo Italic
+				"/System/Library/Fonts/Monaco.ttf",  # Monaco
+				"/System/Applications/Utilities/Terminal.app/Contents/Resources/Fonts/SFMono-Italic.ttf",
+			]:
+				try:
+					return ImageFont.truetype(path, size)
+				except Exception:
+					continue
+		elif monospace and bold:
 			# Try monospace bold fonts first
 			for path in [
 				"/System/Library/Fonts/Menlo.ttc",  # Menlo Bold
