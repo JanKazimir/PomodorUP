@@ -53,16 +53,19 @@ class PomodoroTimer:
 		# Predefined durations in minutes
 		self.predefined_durations = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 75, 90, 120, 150, 180, 210, 240]
 
-		# Text display mode: 'none' | 'minutes_elapsed' | 'minutes_from_target' | 'minutes_to_target' | 'minutes_past_target'
+		# Text display mode: 'none' | 'minutes_elapsed' | 'minutes_from_target' | 'minutes_to_target' | 'minutes_past_target' | 'session_drifts' | 'daily_drifts' | 'daily_drifts_if_above_zero' | 'total_drifts'
 		self.text_display_mode = "minutes_elapsed"
 
 		# In-menu input buffer for Set Target (string of digits or empty)
 		self._input_buffer = ""
 
 		# Drift counter - tracks distraction tallies
-		self.drift_count = 0
+		self.drift_count = 0  # total drift count (manual reset)
+		self.today_drift_count = 0  # today's drift count (resets at 3 AM)
+		self.session_drift_count = 0  # session drift count (resets on timer reset)
 		self._last_click_time = None
 		self._double_click_threshold = 0.5  # seconds
+		self._last_reset_date = None  # tracks when today count was last reset
 
 		# Sleep observer reference
 		self._sleep_observer = None
@@ -70,8 +73,25 @@ class PomodoroTimer:
 		# Load persisted state (sessions, recent targets, target duration)
 		self._load_state()
 
+		# Check if we need to reset today's drift count (at 3 AM)
+		self._check_and_reset_daily_drift()
+
 		# Set up power management notifications
 		self._setup_power_notifications()
+
+	def _check_and_reset_daily_drift(self):
+		"""Check if it's 3 AM and reset today's drift count if needed."""
+		now = datetime.now()
+		today_3am = now.replace(hour=3, minute=0, second=0, microsecond=0)
+
+		# If it's currently past 3 AM today
+		if now >= today_3am:
+			# Check if we haven't reset today yet
+			if self._last_reset_date != now.date():
+				print(f"Resetting today's drift count at 3 AM. Previous count: {self.today_drift_count}")
+				self.today_drift_count = 0
+				self._last_reset_date = now.date()
+				self._save_state()
 
 	def _setup_power_notifications(self):
 		"""Set up notifications for system sleep/wake events."""
@@ -242,7 +262,7 @@ class PomodoroTimer:
 			font = self._get_font(38, bold=True, monospace=True)
 			bbox = draw.textbbox((0, 0), text, font=font, anchor='lt', stroke_width=0)
 			text_w = (bbox[2] - bbox[0]) + 0
-			text_h = (bbox[3] - bbox[1])  + 15
+			text_h = (bbox[3] - bbox[1])  + 27
 			center_x = width // 2
 			center_y = height // 2
 			draw.text(
@@ -327,7 +347,10 @@ class PomodoroTimer:
 		self.is_paused = False
 		self.start_time = None
 		self.paused_elapsed = timedelta(0)
-		
+
+		# Reset session drift count when timer is reset
+		self.session_drift_count = 0
+
 		# Show grey rainbow when reset
 		white_color = (255, 255, 255, 255)
 		self.icon.icon = self.create_icon("", white_color, use_grey_rainbow=True)
@@ -409,6 +432,24 @@ class PomodoroTimer:
 			drift_count = data.get("drift_count")
 			if isinstance(drift_count, int) and drift_count >= 0:
 				self.drift_count = drift_count
+
+			# Restore today's drift count
+			today_drift_count = data.get("today_drift_count")
+			if isinstance(today_drift_count, int) and today_drift_count >= 0:
+				self.today_drift_count = today_drift_count
+
+			# Restore session drift count
+			session_drift_count = data.get("session_drift_count")
+			if isinstance(session_drift_count, int) and session_drift_count >= 0:
+				self.session_drift_count = session_drift_count
+
+			# Restore last reset date
+			last_reset_date = data.get("last_reset_date")
+			if isinstance(last_reset_date, str):
+				try:
+					self._last_reset_date = datetime.fromisoformat(last_reset_date).date()
+				except Exception:
+					self._last_reset_date = None
 			# Session counter resumes from max existing id
 			if self.sessions:
 				try:
@@ -431,6 +472,9 @@ class PomodoroTimer:
 				"target_minutes": int(self.target_duration.total_seconds() // 60),
 				"text_display_mode": self.text_display_mode,
 				"drift_count": self.drift_count,
+				"today_drift_count": self.today_drift_count,
+				"session_drift_count": self.session_drift_count,
+				"last_reset_date": self._last_reset_date.isoformat() if self._last_reset_date else None,
 			}
 			with open(tmp_path, "w", encoding="utf-8") as f:
 				json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -468,11 +512,26 @@ class PomodoroTimer:
 			if delta <= 0:
 				return "",  white
 			return f"{delta}", (33, 37, 43, 0) # white
+		elif mode == "session_drifts":
+			# Display session drift count in italics (using monospace font)
+			return f"{self.session_drift_count}", (250, 250, 250, 250)  # white
+		elif mode == "daily_drifts":
+			# Display today's drift count in italics
+			return f"{self.today_drift_count}", (250, 250, 250, 250)  # white
+		elif mode == "daily_drifts_if_above_zero":
+			# Display today's drift count only if above zero
+			if self.today_drift_count > 0:
+				return f"{self.today_drift_count}", (250, 250, 250, 250)  # white
+			else:
+				return "", (250, 250, 250, 250)  # white
+		elif mode == "total_drifts":
+			# Display total drift count in italics
+			return f"{self.drift_count}", (250, 250, 250, 250)  # white
 		# Fallback
 		return f"{elapsed_minutes}", (250, 250, 250, 250) # white
 
 	def set_text_display_mode(self, mode):
-		valid_modes = {"none", "minutes_elapsed", "minutes_from_target", "minutes_to_target", "minutes_past_target"}
+		valid_modes = {"none", "minutes_elapsed", "minutes_from_target", "minutes_to_target", "minutes_past_target", "session_drifts", "daily_drifts", "daily_drifts_if_above_zero", "total_drifts"}
 		if mode not in valid_modes:
 			return
 		self.text_display_mode = mode
@@ -529,16 +588,33 @@ class PomodoroTimer:
 			print(f"Failed to open data folder: {e}")
 	
 	def increment_drift_count(self):
-		"""Increment the drift counter by 1"""
-		self.drift_count += 1
-		print(f"Drift count incremented to {self.drift_count}")
+		"""Increment all drift counters by 1"""
+		self.drift_count += 1  # total count
+		self.today_drift_count += 1  # today's count
+		self.session_drift_count += 1  # session count
+		print(f"Drift counts incremented - Total: {self.drift_count}, Today: {self.today_drift_count}, Session: {self.session_drift_count}")
 		self._save_state()
 		self._rebuild_menu()
 	
 	def reset_drift_count(self):
-		"""Reset the drift counter to 0"""
+		"""Reset the total drift counter to 0"""
 		self.drift_count = 0
-		print("Drift count reset to 0")
+		print("Total drift count reset to 0")
+		self._save_state()
+		self._rebuild_menu()
+
+	def reset_today_drift_count(self):
+		"""Reset today's drift counter to 0"""
+		self.today_drift_count = 0
+		self._last_reset_date = datetime.now().date()
+		print("Today's drift count reset to 0")
+		self._save_state()
+		self._rebuild_menu()
+
+	def reset_session_drift_count(self):
+		"""Reset session drift counter to 0"""
+		self.session_drift_count = 0
+		print("Session drift count reset to 0")
 		self._save_state()
 		self._rebuild_menu()
 	
@@ -715,6 +791,11 @@ class PomodoroTimer:
 			pystray.MenuItem("Minutes From Target", lambda: self.set_text_display_mode("minutes_from_target"), checked=checked_factory("minutes_from_target")),
 			pystray.MenuItem("Minutes To Target", lambda: self.set_text_display_mode("minutes_to_target"), checked=checked_factory("minutes_to_target")),
 			pystray.MenuItem("Minutes Past Target", lambda: self.set_text_display_mode("minutes_past_target"), checked=checked_factory("minutes_past_target")),
+			pystray.Menu.SEPARATOR,
+			pystray.MenuItem("Session Drifts", lambda: self.set_text_display_mode("session_drifts"), checked=checked_factory("session_drifts")),
+			pystray.MenuItem("Daily Drifts", lambda: self.set_text_display_mode("daily_drifts"), checked=checked_factory("daily_drifts")),
+			pystray.MenuItem("Daily Drifts (if > 0)", lambda: self.set_text_display_mode("daily_drifts_if_above_zero"), checked=checked_factory("daily_drifts_if_above_zero")),
+			pystray.MenuItem("Total Drifts", lambda: self.set_text_display_mode("total_drifts"), checked=checked_factory("total_drifts")),
 		)
 
 		# Statistics submenu
@@ -726,9 +807,13 @@ class PomodoroTimer:
 
 		# Drift Counter submenu
 		drift_menu = pystray.Menu(
-			pystray.MenuItem(lambda item: f"Count: {self.drift_count}", None, enabled=False),
+			pystray.MenuItem(lambda item: f"Total: {self.drift_count}", None, enabled=False),
+			pystray.MenuItem(lambda item: f"Today: {self.today_drift_count}", None, enabled=False),
+			pystray.MenuItem(lambda item: f"Session: {self.session_drift_count}", None, enabled=False),
 			pystray.Menu.SEPARATOR,
-			pystray.MenuItem("Reset Drift Count", self.reset_drift_count),
+			pystray.MenuItem("Reset Today's Drift", self.reset_today_drift_count),
+			pystray.MenuItem("Reset Session Drift", self.reset_session_drift_count),
+			pystray.MenuItem("Reset Total Drift", self.reset_drift_count),
 		)
 
 		menu = pystray.Menu(
@@ -743,7 +828,9 @@ class PomodoroTimer:
 			pystray.MenuItem("Drift Counter", drift_menu),
 			pystray.MenuItem("Statistics", stats_menu),
 			pystray.Menu.SEPARATOR,
-   			pystray.MenuItem(lambda item: f"Today's Drifts: {self.drift_count}", None, enabled=False),
+			pystray.MenuItem(lambda item: f"Session Drifts: {self.session_drift_count}", None, enabled=False),
+			pystray.MenuItem(lambda item: f"Today's Drifts: {self.today_drift_count}", None, enabled=False),
+			pystray.MenuItem(lambda item: f"Total Drifts: {self.drift_count}", None, enabled=False),
 			pystray.MenuItem(f"Target: {target_minutes} min", None, enabled=False),
 			pystray.MenuItem(lambda item: f"Elapsed: {self.format_time(self.get_elapsed_time())}", None, enabled=False),
 			pystray.Menu.SEPARATOR,
