@@ -542,21 +542,6 @@ class PomodoroTimer:
 		self._save_state()
 		self._rebuild_menu()
 	
-	def _on_icon_click(self, icon, item):
-		"""Handle icon clicks to detect double-clicks for drift counter"""
-		current_time = time.time()
-		
-		# Check if this is a double-click
-		if self._last_click_time is not None:
-			time_diff = current_time - self._last_click_time
-			if time_diff <= self._double_click_threshold:
-				# Double-click detected
-				self.increment_drift_count()
-				self._last_click_time = None  # Reset to avoid triple-click counting as another double
-				return
-		
-		# Single click or first click of potential double-click
-		self._last_click_time = current_time
 		
 	def _rebuild_menu(self):
 		if self.icon is not None:
@@ -747,7 +732,7 @@ class PomodoroTimer:
 		)
 
 		menu = pystray.Menu(
-			pystray.MenuItem(lambda item: f"Drift: {self.drift_count} (click to +1)", self.increment_drift_count),
+			pystray.MenuItem(lambda item: f"             Drift +1       ", self.increment_drift_count),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem(start_or_resume_label, self.start_timer),
 			pystray.MenuItem(pause_label, self.pause_timer),
@@ -758,6 +743,7 @@ class PomodoroTimer:
 			pystray.MenuItem("Drift Counter", drift_menu),
 			pystray.MenuItem("Statistics", stats_menu),
 			pystray.Menu.SEPARATOR,
+   			pystray.MenuItem(lambda item: f"Today's Drifts: {self.drift_count}", None, enabled=False),
 			pystray.MenuItem(f"Target: {target_minutes} min", None, enabled=False),
 			pystray.MenuItem(lambda item: f"Elapsed: {self.format_time(self.get_elapsed_time())}", None, enabled=False),
 			pystray.Menu.SEPARATOR,
