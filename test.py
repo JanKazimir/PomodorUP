@@ -59,6 +59,11 @@ class PomodoroTimer:
 		# In-menu input buffer for Set Target (string of digits or empty)
 		self._input_buffer = ""
 
+		# Drift counter - tracks distraction tallies
+		self.drift_count = 0
+		self._last_click_time = None
+		self._double_click_threshold = 0.5  # seconds
+
 		# Sleep observer reference
 		self._sleep_observer = None
 
@@ -400,6 +405,10 @@ class PomodoroTimer:
 			valid_modes = {"none", "minutes_elapsed", "minutes_from_target", "minutes_to_target", "minutes_past_target"}
 			if isinstance(mode, str) and mode in valid_modes:
 				self.text_display_mode = mode
+			# Restore drift count
+			drift_count = data.get("drift_count")
+			if isinstance(drift_count, int) and drift_count >= 0:
+				self.drift_count = drift_count
 			# Session counter resumes from max existing id
 			if self.sessions:
 				try:
@@ -421,6 +430,7 @@ class PomodoroTimer:
 				"recent_targets_minutes": self.recent_targets_minutes,
 				"target_minutes": int(self.target_duration.total_seconds() // 60),
 				"text_display_mode": self.text_display_mode,
+				"drift_count": self.drift_count,
 			}
 			with open(tmp_path, "w", encoding="utf-8") as f:
 				json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -517,6 +527,36 @@ class PomodoroTimer:
 			subprocess.Popen(["open", data_dir])
 		except Exception as e:
 			print(f"Failed to open data folder: {e}")
+	
+	def increment_drift_count(self):
+		"""Increment the drift counter by 1"""
+		self.drift_count += 1
+		print(f"Drift count incremented to {self.drift_count}")
+		self._save_state()
+		self._rebuild_menu()
+	
+	def reset_drift_count(self):
+		"""Reset the drift counter to 0"""
+		self.drift_count = 0
+		print("Drift count reset to 0")
+		self._save_state()
+		self._rebuild_menu()
+	
+	def _on_icon_click(self, icon, item):
+		"""Handle icon clicks to detect double-clicks for drift counter"""
+		current_time = time.time()
+		
+		# Check if this is a double-click
+		if self._last_click_time is not None:
+			time_diff = current_time - self._last_click_time
+			if time_diff <= self._double_click_threshold:
+				# Double-click detected
+				self.increment_drift_count()
+				self._last_click_time = None  # Reset to avoid triple-click counting as another double
+				return
+		
+		# Single click or first click of potential double-click
+		self._last_click_time = current_time
 		
 	def _rebuild_menu(self):
 		if self.icon is not None:
@@ -699,13 +739,23 @@ class PomodoroTimer:
 			pystray.MenuItem("Show Data File", self.show_data_file),
 		)
 
+		# Drift Counter submenu
+		drift_menu = pystray.Menu(
+			pystray.MenuItem(lambda item: f"Count: {self.drift_count}", None, enabled=False),
+			pystray.Menu.SEPARATOR,
+			pystray.MenuItem("Reset Drift Count", self.reset_drift_count),
+		)
+
 		menu = pystray.Menu(
+			pystray.MenuItem(lambda item: f"Drift: {self.drift_count} (click to +1)", self.increment_drift_count),
+			pystray.Menu.SEPARATOR,
 			pystray.MenuItem(start_or_resume_label, self.start_timer),
 			pystray.MenuItem(pause_label, self.pause_timer),
 			pystray.MenuItem("Reset Timer", self.reset_timer),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Target Duration", target_menu),
 			pystray.MenuItem("Text Display", text_display_menu),
+			pystray.MenuItem("Drift Counter", drift_menu),
 			pystray.MenuItem("Statistics", stats_menu),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem(f"Target: {target_minutes} min", None, enabled=False),
@@ -730,8 +780,16 @@ class PomodoroTimer:
 		white_color = (255, 255, 255, 255)
 		initial_icon = self.create_icon("", white_color, use_grey_rainbow=True)
 
-		# Create the system tray icon
-		self.icon = pystray.Icon("PomodorUP", initial_icon, "PomodorUP Timer", self.create_menu())
+		# Create the system tray icon with click handler
+		self.icon = pystray.Icon(
+			"PomodorUP", 
+			initial_icon, 
+			"PomodorUP Timer", 
+			self.create_menu()
+		)
+		
+		# Note: On macOS menu bar, clicking the icon always opens the menu.
+		# The drift counter can be incremented via the menu item at the top.
 
 		# Run the app
 		self.icon.run()
