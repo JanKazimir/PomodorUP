@@ -17,13 +17,20 @@ The premise is that a pomodoro timer should tell you the minimum time to stay fo
 
 I hope you enjoy it.
 
+## Installation
 
+If you're reading this, you probably know more about this than I do.
 
-### Roadmap:
+## Roadmap:  
 
 [X] Tweak the look a bit.
-- Reset the timer when computer goes to sleep
+[x] Fix the menu so the elapsed time item gets updated live.
+[X] Reset the timer when computer goes to sleep.
+- Change the timing of the icon changes.
+- Implement a way to trigger raycast focus mode and mac focus mode when the timer start.
+
+### Maybe:  
+
 - Make a starting timer animation.
-- Add sounds
+- Add sounds.
 - Change the way the custom target time is set.
-- Fix the menu so the elapsed time item gets updated live.
