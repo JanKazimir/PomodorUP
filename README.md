@@ -23,9 +23,9 @@ If you're reading this, you probably know more about this than I do.
 
 ## Roadmap:  
 
-- [X] Tweak the look a bit.
-- [x] Fix the menu so the elapsed time item gets updated live.
-- [X] Reset the timer when computer goes to sleep.
+- ✅ Tweak the look a bit.
+- ✅ Fix the menu so the elapsed time item gets updated live.
+- ✅ Reset the timer when computer goes to sleep.
 - Change the timing of the icon changes.
 - Implement a way to trigger raycast focus mode and mac focus mode when the timer start.
 
