@@ -1,6 +1,6 @@
 # Welcome
 
-Hi, 
+Hi,
 
 Buckle up, because you're about to fall of you chair. 
 
