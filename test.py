@@ -56,6 +56,11 @@ class PomodoroTimer:
 		# Text display mode: 'none' | 'minutes_elapsed' | 'minutes_from_target' | 'minutes_to_target' | 'minutes_past_target' | 'session_drifts' | 'daily_drifts' | 'daily_drifts_if_above_zero' | 'total_drifts' | 'session_count_if_above_zero'
 		self.text_display_mode = "minutes_elapsed"
 
+		# Raycast Focus integration
+		self.raycast_auto_trigger = False  # Auto-trigger Raycast Focus on timer start
+		self.raycast_goal = "Focus Session"  # Default goal text
+		self.raycast_categories = "social,gaming"  # Default categories to block
+
 		# In-menu input buffer for Set Target (string of digits or empty)
 		self._input_buffer = ""
 
@@ -314,6 +319,9 @@ class PomodoroTimer:
 				self._session_counter += 1
 				self._current_session_start = datetime.now()
 				self._current_session_target_minutes = int(self.target_duration.total_seconds() // 60)
+				# Auto-trigger Raycast Focus if enabled (only on fresh start, not resume)
+				if self.raycast_auto_trigger:
+					self.trigger_raycast_focus()
 			# Resume from pause: keep accumulated paused_elapsed
 			self.start_time = datetime.now()
 			self.is_running = True
@@ -452,6 +460,16 @@ class PomodoroTimer:
 					self._last_reset_date = datetime.fromisoformat(last_reset_date).date()
 				except Exception:
 					self._last_reset_date = None
+			# Restore Raycast Focus settings
+			raycast_auto = data.get("raycast_auto_trigger")
+			if isinstance(raycast_auto, bool):
+				self.raycast_auto_trigger = raycast_auto
+			raycast_goal = data.get("raycast_goal")
+			if isinstance(raycast_goal, str) and raycast_goal:
+				self.raycast_goal = raycast_goal
+			raycast_cats = data.get("raycast_categories")
+			if isinstance(raycast_cats, str) and raycast_cats:
+				self.raycast_categories = raycast_cats
 			# Session counter resumes from max existing id
 			if self.sessions:
 				try:
@@ -477,6 +495,9 @@ class PomodoroTimer:
 				"today_drift_count": self.today_drift_count,
 				"session_drift_count": self.session_drift_count,
 				"last_reset_date": self._last_reset_date.isoformat() if self._last_reset_date else None,
+				"raycast_auto_trigger": self.raycast_auto_trigger,
+				"raycast_goal": self.raycast_goal,
+				"raycast_categories": self.raycast_categories,
 			}
 			with open(tmp_path, "w", encoding="utf-8") as f:
 				json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -624,6 +645,38 @@ class PomodoroTimer:
 		self.session_drift_count = 0
 		print("Session drift count reset to 0")
 		self._save_state()
+		self._rebuild_menu()
+
+	def trigger_raycast_focus(self):
+		"""Trigger Raycast Focus session using deeplink"""
+		try:
+			# Build the deeplink URL with current timer settings
+			duration_seconds = int(self.target_duration.total_seconds())
+			# URL encode the goal text
+			import urllib.parse
+			goal_encoded = urllib.parse.quote(self.raycast_goal)
+			
+			# Use toggle to start a new session (or complete if one is active)
+			deeplink = f"raycast://focus/start?goal={goal_encoded}&categories={self.raycast_categories}&duration={duration_seconds}&mode=block"
+			
+			subprocess.Popen(["open", deeplink])
+			print(f"Raycast Focus triggered: {self.raycast_goal} for {duration_seconds}s")
+		except Exception as e:
+			print(f"Failed to trigger Raycast Focus: {e}")
+
+	def complete_raycast_focus(self):
+		"""Complete the current Raycast Focus session"""
+		try:
+			subprocess.Popen(["open", "raycast://focus/complete"])
+			print("Raycast Focus session completed")
+		except Exception as e:
+			print(f"Failed to complete Raycast Focus: {e}")
+
+	def toggle_raycast_auto_trigger(self):
+		"""Toggle auto-trigger of Raycast Focus on timer start"""
+		self.raycast_auto_trigger = not self.raycast_auto_trigger
+		self._save_state()
+		print(f"Raycast auto-trigger: {'enabled' if self.raycast_auto_trigger else 'disabled'}")
 		self._rebuild_menu()
 	
 		
@@ -833,6 +886,25 @@ class PomodoroTimer:
 			pystray.MenuItem("daily at 3AM, total manually.", None, enabled=False),
 		)
 
+		# Raycast Focus submenu
+		def raycast_auto_checked(item):
+			return self.raycast_auto_trigger
+		raycast_menu = pystray.Menu(
+			pystray.MenuItem("Start Focus Session", self.trigger_raycast_focus),
+			pystray.MenuItem("Complete Focus Session", self.complete_raycast_focus),
+			pystray.Menu.SEPARATOR,
+			pystray.MenuItem("Auto-trigger on Timer Start", self.toggle_raycast_auto_trigger, checked=raycast_auto_checked),
+			pystray.Menu.SEPARATOR,
+			pystray.MenuItem(lambda item: f"Goal: {self.raycast_goal}", None, enabled=False),
+			pystray.MenuItem(lambda item: f"Categories: {self.raycast_categories}", None, enabled=False),
+			pystray.Menu.SEPARATOR,
+			pystray.MenuItem("ℹ️ Raycast Focus integration", None, enabled=False),
+			pystray.MenuItem("starts a focus session with", None, enabled=False),
+			pystray.MenuItem("your timer duration. Edit", None, enabled=False),
+			pystray.MenuItem("goal/categories in the", None, enabled=False),
+			pystray.MenuItem("data file (Show Data File).", None, enabled=False),
+		)
+
 		menu = pystray.Menu(
 			pystray.MenuItem(lambda item: f"             Drift +1       ", self.increment_drift_count),
 			pystray.Menu.SEPARATOR,
@@ -845,6 +917,7 @@ class PomodoroTimer:
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Target Duration", target_menu),
 			pystray.MenuItem("Text Display", text_display_menu),
+			pystray.MenuItem("Raycast Focus", raycast_menu),
 			pystray.MenuItem("Drift Counter", drift_menu),
 			pystray.MenuItem("Statistics", stats_menu),
 			pystray.Menu.SEPARATOR,
