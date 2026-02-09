@@ -339,6 +339,9 @@ class PomodoroTimer:
 			self.is_running = False
 			self.is_paused = True
 			self.start_time = None
+			# Complete (cancel) Raycast Focus session if auto-trigger is enabled
+			if self.raycast_auto_trigger:
+				self.complete_raycast_focus()
 			# Show paused text per current text display mode
 			elapsed = self.get_elapsed_time()
 			text, color = self._compute_text_and_color(elapsed)
@@ -351,6 +354,10 @@ class PomodoroTimer:
 		elapsed_before_reset = self.get_elapsed_time()
 		if self._current_session_start is not None and elapsed_before_reset.total_seconds() > 0:
 			self._append_session_record(end_dt=datetime.now(), elapsed_td=elapsed_before_reset)
+
+		# Complete Raycast Focus session if auto-trigger is enabled
+		if self.raycast_auto_trigger:
+			self.complete_raycast_focus()
 
 		# Reset all timing state
 		self.is_running = False
@@ -671,6 +678,16 @@ class PomodoroTimer:
 			print("Raycast Focus session completed")
 		except Exception as e:
 			print(f"Failed to complete Raycast Focus: {e}")
+
+	def pause_raycast_focus(self):
+		"""Pause the current Raycast Focus session indefinitely"""
+		try:
+			# Raycast doesn't have a specific "pause indefinitely" deeplink,
+			# but we can use the pause command which will show the pause dialog
+			subprocess.Popen(["open", "raycast://extensions/raycast/raycast/pause-focus-session"])
+			print("Raycast Focus session paused")
+		except Exception as e:
+			print(f"Failed to pause Raycast Focus: {e}")
 
 	def toggle_raycast_auto_trigger(self):
 		"""Toggle auto-trigger of Raycast Focus on timer start"""
