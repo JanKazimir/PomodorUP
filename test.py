@@ -840,6 +840,9 @@ class PomodoroTimer:
 			pystray.MenuItem(pause_label, self.pause_timer),
 			pystray.MenuItem("Reset Timer", self.reset_timer),
 			pystray.Menu.SEPARATOR,
+			pystray.MenuItem(f"Target: {target_minutes} min", None, enabled=False),
+			pystray.MenuItem(lambda item: f"Elapsed: {self.format_time(self.get_elapsed_time())}", None, enabled=False),
+			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Target Duration", target_menu),
 			pystray.MenuItem("Text Display", text_display_menu),
 			pystray.MenuItem("Drift Counter", drift_menu),
@@ -848,8 +851,6 @@ class PomodoroTimer:
 			pystray.MenuItem(lambda item: f"Session Drifts: {self.session_drift_count}", None, enabled=False),
 			pystray.MenuItem(lambda item: f"Today's Drifts: {self.today_drift_count}", None, enabled=False),
 			pystray.MenuItem(lambda item: f"Total Drifts: {self.drift_count}", None, enabled=False),
-			pystray.MenuItem(f"Target: {target_minutes} min", None, enabled=False),
-			pystray.MenuItem(lambda item: f"Elapsed: {self.format_time(self.get_elapsed_time())}", None, enabled=False),
 			pystray.Menu.SEPARATOR,
 			pystray.MenuItem("Quit", self.quit_app)
 		)
