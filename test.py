@@ -14,6 +14,10 @@ import subprocess
 import objc
 
 
+# Number of horizontal colour bands making up the tray icon
+BAND_COUNT = 5
+
+
 class SleepObserver(NSObject):
     def init(self):
         self = objc.super(SleepObserver, self).init()
@@ -122,36 +126,29 @@ class PomodoroTimer:
 		inner_width = circle_bbox[2] - circle_bbox[0]
 		inner_height = circle_bbox[3] - circle_bbox[1]
 
+		# Resting palette: near-solid white at the bottom, dropping off fast toward the top.
+		white_band_colors_hex = [
+			"#FFFFFFE6",  # 90% opaque (bottom)
+			"#FFFFFFA6",  # 65% opaque
+			"#FFFFFF73",  # 45% opaque
+			"#FFFFFF4D",  # 30% opaque
+			"#FFFFFF1A",  # 10% opaque (top)
+		]
+
 		# Prepare band colors bottom -> top
 		if use_grey_rainbow:
-			# Grey rainbow colors from dark to light
-			band_colors_hex = [
-				"#2A2A2AFF",  # dark grey
-				"#404040FF",  # medium dark grey
-				"#565656FF",  # medium grey
-				"#6C6C6CFF",  # medium light grey
-				"#828282FF",  # light grey
-				"#989898FF",  # very light grey
-			]
+			band_colors_hex = white_band_colors_hex
 		else:
 			band_colors_hex = [
-				"#5E46D2FF",  # dark_purple
-				"#8130C2FF",  # mauve
-				"#A5268CFF",  # fuschia
-				"#F22659FF",  # red
+				"#5E46D2FF",  # dark purple
+				"#A553E8FF",  # fuschia lilac
+				"#D22EA4E4",  # red
 				"#FF663FFF",  # orange
 				"#F2CC3FFF",  # yellow
 			]
 
-		# Grey rainbow colors for unfilled bands during running
-		grey_band_colors_hex = [
-			"#2A2A2AFF",  # dark grey
-			"#404040FF",  # medium dark grey
-			"#565656FF",  # medium grey
-			"#6C6C6CFF",  # medium light grey
-			"#828282FF",  # light grey
-			"#989898FF",  # very light grey
-		]
+		# Unfilled bands (before their colour arrives) use the same white gradient
+		grey_band_colors_hex = white_band_colors_hex
 
 		def hex_to_rgba_tuple(h):
 			# Expect #RRGGBBAA
@@ -164,78 +161,77 @@ class PomodoroTimer:
 		base_colors = [hex_to_rgba_tuple(h) for h in band_colors_hex]
 		grey_base_colors = [hex_to_rgba_tuple(h) for h in grey_band_colors_hex]
 
-		# Compute elapsed seconds and part size
+		# Compute elapsed seconds and part sizes
 		elapsed = self.get_elapsed_time()
 		elapsed_s = max(0.0, elapsed.total_seconds())
 		total_target_s = max(1.0, self.target_duration.total_seconds() or 1.0)
-		part_s = total_target_s / 6.0
+		# The bottom band lights the instant the timer starts, so only the 4 bands above it
+		# have to be earned: each takes a quarter of the target, and the top band lands
+		# exactly when the target is reached.
+		fill_part_s = total_target_s / (BAND_COUNT - 1)
+		# Past the target, one full bottom->top recolour loop takes one target duration.
+		post_part_s = total_target_s / BAND_COUNT
 
 		# Determine per-band color and opacity
 		bands = []  # list of (r,g,b,a_float 0..1)
-		
-		# Middle grey color for initial background
-		grey_color = (128, 128, 128, 255)  # middle grey
-
-		steps = int(elapsed_s // part_s)
-		step_progress_s = elapsed_s - steps * part_s
 
 		# Check if we should show grey rainbow (reset state)
 		show_grey_rainbow = use_grey_rainbow or (not self.is_running and elapsed_s == 0)
 
 		if show_grey_rainbow:
-			# Show full grey rainbow when in reset state
-			for i in range(6):
-				opacity = 255
+			# Show the full resting gradient when in reset state (each colour keeps its own alpha)
+			for i in range(BAND_COUNT):
 				color = base_colors[i]
-				bands.append((color[0], color[1], color[2], opacity))
-		elif steps <= 5:
-			# Initial fill-in (bottom to top), each band appears directly in its target color
-			for i in range(6):
-				band_start_s = i * part_s
-				if elapsed_s < band_start_s:
-					# Show grey bands when timer is running but not yet filled
-					if self.is_running:
-						opacity = 1.0
-						color = grey_base_colors[i]
-					else:
-						# Show grey background when timer is not running
-						opacity = 1.0
-						color = grey_color
+				bands.append((color[0], color[1], color[2], color[3] / 255.0))
+		elif elapsed_s <= total_target_s:
+			# Initial fill-in (bottom to top). Band 0 is coloured as soon as the timer runs;
+			# band i lights once elapsed reaches i * fill_part_s.
+			for i in range(BAND_COUNT):
+				if elapsed_s < i * fill_part_s:
+					# Not filled yet: show the resting white gradient (dimmed below if paused)
+					color = grey_base_colors[i]
+					opacity = color[3] / 255.0
 				else:
 					# Show target color directly when band should be filled
 					opacity = 1.0
 					color = base_colors[i]
 				bands.append((color[0], color[1], color[2], opacity))
 		else:
-			# After the first loop: convert bands bottom->top toward a single target color per loop.
-			# Loop 0 (post-target): target = dark_purple (index 0), then mauve (1), fuschia (2), red (3), orange (4), yellow (5), then repeat.
-			# During each loop, bands transition one-by-one from bottom to top to the loop's target color.
-			post_target_steps = steps - 6
-			loop_index = post_target_steps // 6  # 0-based index of which solid-color loop we're in
-			pos_in_loop = post_target_steps % 6  # 0..5 number of bands (from bottom) already converted this loop
-			current_target_color = base_colors[loop_index % 6]
-
-			# Determine the "previous" color for bands not yet converted this loop
-			if loop_index == 0:
-				# First post-target loop starts from the rainbow state produced by the initial loop
-				def previous_color_for_band(band_index):
-					return base_colors[band_index]
+			# After the target: convert bands bottom->top toward a single target color per loop.
+			# Loop 0 (post-target): target = dark purple (index 0), then fuschia lilac (1), red (2),
+			# orange (3), yellow (4), then repeat. Each conversion takes post_part_s, so a whole
+			# loop spans one target duration.
+			conversions = int((elapsed_s - total_target_s) // post_part_s)
+			if conversions <= 0:
+				# Target just reached: the full rainbow, untouched
+				for i in range(BAND_COUNT):
+					color = base_colors[i]
+					bands.append((color[0], color[1], color[2], 1.0))
 			else:
-				# Subsequent loops start from a solid color from the previous loop
-				previous_target_color = base_colors[(loop_index - 1) % 6]
-				def previous_color_for_band(band_index):
-					return previous_target_color
+				loop_index = (conversions - 1) // BAND_COUNT  # which solid-color loop we're in
+				converted = ((conversions - 1) % BAND_COUNT) + 1  # bands (from bottom) already converted
+				current_target_color = base_colors[loop_index % BAND_COUNT]
 
-			for i in range(6):
-				if i <= pos_in_loop:
-					color = current_target_color
+				# Determine the "previous" color for bands not yet converted this loop
+				if loop_index == 0:
+					# First post-target loop starts from the rainbow state produced by the initial fill
+					def previous_color_for_band(band_index):
+						return base_colors[band_index]
 				else:
-					color = previous_color_for_band(i)
-				opacity = 1.0
-				bands.append((color[0], color[1], color[2], opacity))
+					# Subsequent loops start from a solid color from the previous loop
+					previous_target_color = base_colors[(loop_index - 1) % BAND_COUNT]
+					def previous_color_for_band(band_index):
+						return previous_target_color
 
-		# If timer not running, halve the opacity of all bands
-		if not self.is_running:
+				for i in range(BAND_COUNT):
+					if i < converted:
+						color = current_target_color
+					else:
+						color = previous_color_for_band(i)
+					bands.append((color[0], color[1], color[2], 1.0))
+
+		# If timer not running, halve the opacity of all bands (the resting gradient keeps its own alphas)
+		if not self.is_running and not show_grey_rainbow:
 			bands = [(r, g, b, a * 0.5) for (r, g, b, a) in bands]
 
 		# Draw base circle outline
@@ -248,7 +244,7 @@ class PomodoroTimer:
 
 		bands_image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
 		b_draw = ImageDraw.Draw(bands_image)
-		band_height = inner_height // 6
+		band_height = inner_height // BAND_COUNT
 		for idx, (r, g, b, a_float) in enumerate(bands):
 			band_top = circle_bbox[1] + inner_height - (idx + 1) * band_height
 			band_bottom = band_top + band_height
@@ -753,14 +749,14 @@ class PomodoroTimer:
 		
 		self._rebuild_menu()
 
-	def divide_target_into_six(self):
-		"""Return a list of six timedelta parts that sum to target_duration."""
+	def divide_target_into_bands(self):
+		"""Return a list of BAND_COUNT timedelta parts that sum to target_duration."""
 		total_seconds = int(self.target_duration.total_seconds())
-		part = total_seconds // 6
+		part = total_seconds // BAND_COUNT
 		# Distribute remainder seconds to the first parts
-		remainder = total_seconds % 6
+		remainder = total_seconds % BAND_COUNT
 		parts = []
-		for i in range(6):
+		for i in range(BAND_COUNT):
 			additional = 1 if i < remainder else 0
 			parts.append(timedelta(seconds=part + additional))
 		return parts
